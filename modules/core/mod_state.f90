@@ -5,6 +5,7 @@ module mod_state
 
   use mod_config,         only: Config
   use mod_readConditions, only: read_input
+  use mod_utils,          only: stop_calculation
 
   use mod_constants,      only: eps0, qe, c, pi
   use mod_domain,         only: Domain
@@ -106,6 +107,11 @@ module mod_state
     ! folded into P_loss(2,:,:)/reset every ns_RF steps.
     real(real64) :: gams = 0.0_real64
     real(real64), allocatable :: P_RF(:,:)
+    ! Number of mover steps accumulated in P_RF since the last
+    ! update_rf_convergence. Drives the convergence cadence instead of
+    ! mod(istep,ns_RF), so a restart (istep offset not a multiple of
+    ! ns_RF) still averages over a full RF period.
+    integer(int32) :: nstep_RF = 0_int32
 
     ! Injection source diagnostic arrays — same shape as legacy:
     !   sour_xy/xz/yz: volume injection (part_injection)
@@ -228,6 +234,11 @@ contains
     if (self%cfg%flag_circxh == 1 .or. self%cfg%flag_RFant == 1) then
       self%cfg%R_ahp = self%cfg%yr_pow - self%dom%ymax / 2.0_real64
     end if
+    ! Planar antenna: an explicit window radius (may be smaller than the
+    ! domain cross-section) overrides the yr_pow-derived radius.
+    if (self%cfg%flag_planar_ant == 1 .and. self%cfg%R_win > 0.0_real64) then
+      self%cfg%R_ahp = self%cfg%R_win
+    end if
 
     if (self%cfg%flag_RFant == 1) then
       ! Initial nominal skin depth from the startup wp - mirrors legacy
@@ -240,6 +251,19 @@ contains
         write(*,'(1x,a,i0,a,f6.2)') &
           '# of time steps per RF period=', self%params%ns_RF, &
           ', RF skin depth gam(cm)=', self%gams*1.0e2_real64
+        if (self%cfg%flag_planar_ant == 1) then
+          write(*,'(1x,a,f7.3,a,f7.3)') 'RF antenna: Planar, window radius (cm)=', &
+            self%cfg%R_ahp*1.0e2_real64, ', window at x (cm)=', &
+            max(0.0_real64, self%cfg%xl_pow)*1.0e2_real64
+        else
+          write(*,'(1x,a,f7.3)') 'RF antenna: Wrapped, coil radius (cm)=', &
+            self%cfg%R_ahp*1.0e2_real64
+        end if
+      end if
+      if (self%cfg%R_ahp <= 0.0_real64) then
+        if (self%mpi_rank == 0) write(*,'(a)') 'RF antenna radius must be > 0 ' // &
+          '(set yr_pow > ymax/2, or R_win for Planar), please correct ...'
+        call stop_calculation
       end if
 
       ! Round nsav to a multiple of the RF period - legacy Src/main.f90:666.
@@ -1444,6 +1468,14 @@ contains
     yr_c = min(self%dom%ymax, self%cfg%yr_pow)
     zl_c = max(0.0_real64, self%cfg%zl_pow)
     zr_c = min(self%dom%zmax, self%cfg%zr_pow)
+    ! Planar antenna: average over the window disk (r <= R_ahp about the
+    ! y-z centre), whose radius need not match the yl_pow..zr_pow box.
+    if (self%cfg%flag_planar_ant == 1_int32) then
+      yl_c = max(0.0_real64,     self%dom%ymax/2.0_real64 - self%cfg%R_ahp)
+      yr_c = min(self%dom%ymax, self%dom%ymax/2.0_real64 + self%cfg%R_ahp)
+      zl_c = max(0.0_real64,     self%dom%zmax/2.0_real64 - self%cfg%R_ahp)
+      zr_c = min(self%dom%zmax, self%dom%zmax/2.0_real64 + self%cfg%R_ahp)
+    end if
 
     ixl = int(xl_c/self%dom%h(1), int32) + 1_int32
     ixr = int(xr_c/self%dom%h(1), int32) + 1_int32
@@ -1491,7 +1523,7 @@ contains
     ! Reduce this period's absorbed power (accumulated by the mover into
     ! self%P_RF every step since the last call) across MPI ranks.
     P_RFtot_local = sum(self%P_RF(1:self%ntype,1:self%nproc)) / &
-                    real(self%params%ns_RF, real64) / self%params%dt
+                    real(max(1_int32, self%nstep_RF), real64) / self%params%dt
     P_RFtot = P_RFtot_local
     if (self%mpi_size > 1) then
       call MPI_Allreduce(P_RFtot_local, P_RFtot, 1, MPI_DOUBLE_PRECISION, &
@@ -1519,8 +1551,9 @@ contains
         ', skin depth gam(cm)=', self%gams*1.0e2_real64
     end if
 
-    self%P_RF   = 0.0_real64
-    self%mom_RF = 0.0_real64
+    self%P_RF     = 0.0_real64
+    self%mom_RF   = 0.0_real64
+    self%nstep_RF = 0_int32
   end subroutine update_rf_convergence
 
 

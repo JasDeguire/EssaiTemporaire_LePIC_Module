@@ -43,6 +43,9 @@ module mod_config
     real(real64)      :: phi0_RF   = 0.0_real64, f0_RF = 0.0_real64
     real(real64)      :: phi1_RF   = 0.0_real64, f1_RF = 0.0_real64
     real(real64)      :: E0_RF     = 0.0_real64
+    ! Planar antenna only: radius (m) of the dielectric window/coil, centred
+    ! on the y-z axis. <= 0 falls back to R_ahp = yr_pow - ymax/2.
+    real(real64)      :: R_win     = 0.0_real64
 
     real(real64)      :: Ti(npart)     = 0.0_real64
     real(real64)      :: x_load    = 0.0_real64

@@ -570,6 +570,7 @@ contains
         character(len=2), parameter :: ecomp(3) = ['Ex', 'Ey', 'Ez']
         integer(int32) :: comp, n1, n2, n3
         integer :: u3d
+        real(real64), allocatable :: map3D(:,:,:,:)
 
         n1 = int(self%state%dom%n(1), int32)
         n2 = int(self%state%dom%n(2), int32)
@@ -595,7 +596,13 @@ contains
         open(newunit=u3d, file='./Output/phi_n_3D.dat', form='unformatted', &
              status='replace', action='write')
         write(u3d) self%state%dom%n(1), self%state%dom%n(2), self%state%dom%n(3)
-        write(u3d) self%state%avg3D(4:5,:,:,:) / avg_factor
+        ! Explicit heap buffer: the inline expression makes the compiler
+        ! build a stack temporary (~39 MB at ITER size), which segfaults
+        ! under the default 8 MB stack limit.
+        allocate(map3D(2, n1+1, n2+1, n3+1))
+        map3D = self%state%avg3D(4:5,:,:,:) / avg_factor
+        write(u3d) map3D
+        deallocate(map3D)
         close(u3d)
       end block
     else
@@ -696,10 +703,15 @@ contains
     ! equivalent block (main.f90:859) also runs before that iteration's
     ! calc_rho (main.f90:970), reading the same "previous period" density
     ! and already-accumulated P_RF.
+    ! Cadence is a count of accumulated steps, not mod(istep,ns_RF): after a
+    ! restart istep starts at the backup step, which is generally not a
+    ! multiple of ns_RF, and a partial first window would under-read P_RF.
     if (self%state%cfg%flag_RFant == 1_int32) then
-      if (mod(istep, self%state%params%ns_RF) == 0_int32) then
+      if (self%state%nstep_RF >= self%state%params%ns_RF) then
         call self%state%update_rf_convergence(istep)
       end if
+      ! This step's mover call (below) accumulates into P_RF.
+      self%state%nstep_RF = self%state%nstep_RF + 1_int32
     end if
 
     ! E/rho

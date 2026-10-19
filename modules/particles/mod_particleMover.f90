@@ -137,16 +137,17 @@ contains
                                     EAy, EAz, EAth, theta)
     ! RF antenna (inductive) heating field, azimuthal about the domain's
     ! y-z center. Two selectable geometries (cfg%flag_planar_ant, set from
-    ! the 'A' vs 'P' ans option in mod_readConditions.f90):
+    ! the 'Wrapped' vs 'Planar' RF mode in mod_readConditions.f90):
     !
     !   flag_planar_ant==0 (wall-coil, default): coil wrapped around the
     !   chamber wall at radius R_ahp. Field peaks at R_ahp and decays
-    !   exponentially INWARD (skin depth gams) as rp decreases. Ported
-    !   from legacy Src/part_expmover.f90:147-155.
+    !   exponentially INWARD (skin depth gams) as rp decreases; zero for
+    !   rp > R_ahp. Ported from legacy Src/part_expmover.f90:147-155.
     !
     !   flag_planar_ant==1 (planar-coil): coil under a dielectric window
     !   at x=x0 (=xl_pow). Radial term is the bounded Faraday's-law
-    !   profile for a uniform time-varying B_z confined to r<=R_ahp
+    !   profile for a uniform time-varying B_z confined to r<=R_ahp, the
+    !   window radius (cfg%R_win if given, else yr_pow-ymax/2)
     !   (E ~ r inside, E ~ R_ahp/r outside - continuous at rp=R_ahp,
     !   unlike a naive r/R_ahp that grows without bound past the coil's
     !   own extent). Skin depth now decays AXIALLY away from the window,
@@ -174,8 +175,15 @@ contains
           radial_factor = R_ahp / rp
        end if
        EAth = E0_RF * radial_factor * exp(-(xp-x0)/gams) * cos(omega_RF*time)
-    else
+    else if (rp <= R_ahp) then
        EAth = E0_RF * (rp/R_ahp) * exp((rp-R_ahp)/gams) * cos(omega_RF*time)
+    else
+       ! Outside the coil radius: no field. The skin-depth profile grows as
+       ! exp((rp-R_ahp)/gams) past the coil, so without this cutoff any
+       ! plasma at rp > R_ahp inside the xl_pow..xr_pow slab (e.g. the
+       ! expansion-chamber side of the ixr_pow cell) sees runaway fields.
+       ! Legacy Src/part_expmover.f90 has no cutoff.
+       EAth = 0.0_real64
     end if
 
     EAy  = -EAth*sin(theta)

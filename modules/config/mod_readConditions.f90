@@ -79,6 +79,9 @@ module mod_readConditions
         character(len=3) :: end_file
         character(len=256) :: line1
         character(len=1) :: ans
+        character(len=256) :: line_rf
+        character(len=16)  :: rf_mode
+        integer :: ios
 
         ! locals for signature outputs (still stored in cfg)
         integer :: flag_avg3D
@@ -204,31 +207,73 @@ module mod_readConditions
 
         read(10,*,err=999) cfg%jne, cfg%THm, cfg%num_grd, cfg%Ca
 
-        read(10,*,err=999) cfg%gam_sec, cfg%igrid_sec, ans, cfg%phi0_RF, cfg%f0_RF, cfg%phi1_RF, cfg%f1_RF, cfg%E0_RF
-        cfg%flag_RFpot = 0
-        if (ans=='y' .or. ans=='Y') cfg%flag_RFpot = 1
-
-        ! RF antenna (inductive) heating - Src/read_input.f90:128-134
-        ! 'A'/'a': wall-coil geometry (skin depth decays radially inward
-        ! from R_ahp). 'P'/'p': planar-coil geometry (coil under a
-        ! dielectric window at x=xl_pow; skin depth decays axially away
-        ! from the window instead, and the radial term uses the bounded
-        ! Faraday's-law profile rather than an unbounded r/R_ahp growth).
-        cfg%flag_RFant = 0
-        cfg%flag_planar_ant = 0
-        if (ans=='A' .or. ans=='a') then
-            cfg%flag_RFant = 1
-            cfg%flag_inj  = 0
-            cfg%I_inj     = 0.0_real64
-            cfg%flag_heat = 0
+        ! gam_sec, igrid_sec, RF mode, phi0_RF, f0_RF, phi1_RF, f1_RF [, E0_RF [, R_win]]
+        ! Read as one record so the optional trailing values can't consume
+        ! tokens from the next line: try 9 values, then 8, then 7 (a trailing
+        ! '!' comment makes the longer reads fail and fall through).
+        read(10,'(a)',err=999,end=999) line_rf
+        read(line_rf,*,iostat=ios) cfg%gam_sec, cfg%igrid_sec, rf_mode, cfg%phi0_RF, &
+                                   cfg%f0_RF, cfg%phi1_RF, cfg%f1_RF, cfg%E0_RF, cfg%R_win
+        if (ios /= 0) then
+            cfg%R_win = 0.0_real64
+            read(line_rf,*,iostat=ios) cfg%gam_sec, cfg%igrid_sec, rf_mode, cfg%phi0_RF, &
+                                       cfg%f0_RF, cfg%phi1_RF, cfg%f1_RF, cfg%E0_RF
         end if
-        if (ans=='P' .or. ans=='p') then
+        if (ios /= 0) then
+            cfg%E0_RF = 0.0_real64
+            read(line_rf,*,err=999) cfg%gam_sec, cfg%igrid_sec, rf_mode, cfg%phi0_RF, &
+                                    cfg%f0_RF, cfg%phi1_RF, cfg%f1_RF
+        end if
+        cfg%R_win = cfg%R_win*1.0e-2_real64
+
+        ! RF mode (case-insensitive; legacy single letters still accepted):
+        !   'No'        : no RF
+        !   'Electrode' : RF potential on electrode igrid_sec (legacy 'D', modular 'y')
+        !   'Wrapped'   : inductive coil wrapped around the driver wall (legacy 'A').
+        !                 Field peaks at R_ahp and decays radially inward (skin depth).
+        !   'Planar'    : inductive planar coil under a dielectric window at x=xl_pow
+        !                 (legacy-modular 'P'). Field decays axially away from the
+        !                 window; radial profile bounded at the window radius R_win.
+        cfg%flag_RFpot      = 0
+        cfg%flag_RFant      = 0
+        cfg%flag_planar_ant = 0
+        select case (to_lower(rf_mode))
+        case ('no', 'n', 'none', 'off')
+        case ('electrode', 'y', 'd')
+            cfg%flag_RFpot = 1
+        case ('wrapped', 'a')
+            cfg%flag_RFant = 1
+        case ('planar', 'p')
             cfg%flag_RFant      = 1
             cfg%flag_planar_ant = 1
+        case default
+            if (mpi_rank == 0) write(*,'(a)') 'Unknown RF mode "' // trim(rf_mode) // &
+                '" in conditions.inp (expected No, Electrode, Wrapped or Planar)'
+            call stop_calculation
+        end select
+
+        if (cfg%flag_RFpot == 1) then
+            if (mpi_rank == 0) write(*,'(a)') 'RF mode "Electrode" is not implemented in ' // &
+                'LePIC+ yet (legacy Src/main.f90:972-982 was not ported), please correct ...'
+            call stop_calculation
+        end if
+
+        if (cfg%flag_RFant == 1) then
+            ! RF antenna (inductive) heating - Src/read_input.f90:128-134
             cfg%flag_inj  = 0
             cfg%I_inj     = 0.0_real64
             cfg%flag_heat = 0
+            ! E0_RF is rescaled multiplicatively toward Pabs and ns_RF = 1/(f0_RF*dt),
+            ! so all three must be positive.
+            if (cfg%f0_RF <= 0.0_real64 .or. cfg%E0_RF <= 0.0_real64 .or. cfg%Pabs <= 0.0_real64) then
+                if (mpi_rank == 0) write(*,'(a)') 'RF antenna needs f0_RF > 0, E0_RF > 0 ' // &
+                    '(initial guess) and Pabs > 0 (target power), please correct ...'
+                call stop_calculation
+            end if
         end if
+
+        if (cfg%R_win > 0.0_real64 .and. cfg%flag_planar_ant == 0 .and. mpi_rank == 0) &
+            write(*,'(a)') 'Warning: R_win is only used by the Planar RF antenna, ignored ...'
 
         if (cfg%I_inj > 0.0_real64 .and. cfg%gam_sec > 0.0_real64) then
             print*, 'Warning: gam_sec>0 is incompatible with I_inj>0, please correct ...'
@@ -266,5 +311,16 @@ module mod_readConditions
             '<reactions file> <number of time steps (> 0)>'
         call stop_calculation
     end subroutine read_input_cfg
+
+    pure function to_lower(s) result(r)
+        character(len=*), intent(in) :: s
+        character(len=len_trim(s))   :: r
+        integer :: i, ic
+        r = s(1:len_trim(s))
+        do i = 1, len(r)
+            ic = iachar(r(i:i))
+            if (ic >= iachar('A') .and. ic <= iachar('Z')) r(i:i) = achar(ic + 32)
+        end do
+    end function to_lower
 
 end module mod_readConditions

@@ -24,7 +24,7 @@ no 1 0. 5. 0. 5. 1 0. 10. ! Save pdf (y/n), ptype, yl, yr, zl, zr (cm), # of reg
 no 24 2 1. ! Restart (yes/no/external/gauss),  # of OMP threads, # of MPI, coefficient for particle duplication/removal
 no 0.8 0.8 1 2 2 ! Holes (y/n), Lhy*Lhz(cm), ny*nz holes, (PE) grid index
 0. 10. 3 1.d-6 ! jH-(mA/cm2) from H on PE surface, TH-(eV), characteristics of neg. ions on grid # [index], dielectric capacitance Ca/S (Fd/m2)
--0.18 2 no 0. 0.2 0.6 0.8 0. ! Secondary emission coeff (<0 == off), grid index
+-0.18 2 No 0. 0.2 0.6 0.8 0. ! Secondary emission coeff (<0 == off), grid index, RF mode (No/Electrode/Wrapped/Planar), phi0(V), f0(Hz), phi1(V), f1(Hz), E0_RF(V/m, initial guess) [, R_win(cm): Planar window radius]
 no  ! Coulomb collisions (no/yes)
 momentum ! Push scheme (momentum/energy) - EC-PIC (Powis & Kaganovich 2024) if 'energy'
 END
