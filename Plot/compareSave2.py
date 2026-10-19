@@ -187,13 +187,16 @@ def compare_arrays(
     fig, axes = plt.subplots(1, 4, figsize=(24, 5))
 
     extent = (0.0, 1.0, 0.0, 1.0)
-
+    maximum = max(np.max(arr_legacy), np.max(arr_modular))
+    minimum = min(np.min(arr_legacy), np.min(arr_modular))
     im1 = axes[0].imshow(
         arr_legacy,
         origin="lower",
         aspect="auto",
         extent=extent,
-    )
+        vmin=minimum,
+        vmax=maximum)
+
     plt.colorbar(im1, ax=axes[0])
     axes[0].set_title(f"Legacy\n{name}_{dim}.mco\nshape={arr_legacy.shape}")
     axes[0].set_xlabel(xlabel)
@@ -204,7 +207,8 @@ def compare_arrays(
         origin="lower",
         aspect="auto",
         extent=extent,
-    )
+        vmin=minimum,
+        vmax=maximum)
     plt.colorbar(im2, ax=axes[1])
     axes[1].set_title(f"Modular\n{modular_label}\nshape={arr_modular.shape}")
     axes[1].set_xlabel(xlabel)

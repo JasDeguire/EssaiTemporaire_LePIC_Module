@@ -1,0 +1,18 @@
+# Effect of probe tip axial location, at 15 sccm gas flow.
+# Three conditions: 0V electrode bias, 20V electrode bias (15 sccm), 20V electrode bias at 25 sccm.
+# location_mm: axial distance from the plasma-electrode/source end (mm)
+# location_from_far_end_mm: same position measured from the opposite end - derived as 162 - location_mm,
+#   kept only because the original data listed it alongside location_mm; not an independent measurement.
+# float_*: floating potential (V); plasma_*: plasma potential (V); real_float_*: separately logged
+#   "real" floating potential (V) where recorded - blank where not recorded in the source data.
+location_mm,location_from_far_end_mm,float_0V,plasma_0V,real_float_0V,float_20V,plasma_20V,real_float_20V,float_20V_25sccm,plasma_20V_25sccm,real_float_20V_25sccm
+12,150,2.398,8.07,,18.439,21.145,18.2,1.85,5.019,1.1
+27,135,1.1068,8.3617,,15.43,22.33,15.2,0.09,5.233,0
+42,120,-4.563,7.96033,-4.2,10.28,20.632,8.5,-3.46,4.84,-3.6
+57,105,-5.131,6.5176,-4.3,6.48,17.5,5.2,-4.49,4.415,-4.5
+72,90,-4.2,8.69,-5.1,2.922,15.1048,,-5.51,4.46,-5.4
+87,75,-5.971,7.902,,0.155,14.18,-0.2,-6.32,5.148,-6.1
+102,60,-6.421,8.879,,-1.301,14.319,-1.2,-6.94,5.316,-6.5
+117,45,-5.77,12.285,,-1.786,13.77,-1.6,-7.19,7.77,-6.8
+132,30,-3.013,14.948,,-0.897,18.461,-0.4,7.35,10.33,-6.7
+147,15,-2.32,20.756,0,2.87,26.433,4.7,-7.36,12.7,-6.8

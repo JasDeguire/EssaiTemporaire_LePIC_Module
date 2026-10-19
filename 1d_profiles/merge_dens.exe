@@ -1,3 +1,0 @@
-#!/bin/sh
-
-awk '{_[FNR]=(_[FNR] OFS $2)}END{for (i=1; i<=FNR; i++) {print _[i]}}' n*.dat > sum_dens.dat

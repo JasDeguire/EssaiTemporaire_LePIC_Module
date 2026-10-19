@@ -32,6 +32,7 @@ from pathlib import Path
 
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.colors import LogNorm
 
 
 # ---------------------------------
@@ -228,18 +229,31 @@ def plot_array(
     # -----------------------------
     # 2D MAP
     # -----------------------------
-    im = axes[0].imshow(
-        arr,
-        origin="lower",
-        aspect="auto",
-    )
+    if(name[0] == 'n'):
+        np.where((arr < np.max(arr)/10**3) & (arr > np.max(arr)/10**6) , arr, np.max(arr)/10**3)
+        im = axes[0].imshow(
+            arr,
+            origin="lower",
+            cmap="Spectral_r",
+            aspect="auto",
+            norm=LogNorm(vmin=max(np.max(arr)/10**3,np.min(arr)), vmax=np.max(arr))
+        )
+        axes[1].set_yscale('log')
+
+    else:
+        im = axes[0].imshow(
+            arr,
+            origin="lower",
+            cmap="Spectral_r",
+            aspect="auto",
+        )
 
     plt.colorbar(im, ax=axes[0])
 
     axes[0].set_title(
         f"{title_prefix}_{name}_{dim}\n"
         f"shape={arr.shape}"
-    )
+        )
 
     axes[0].set_xlabel(xlabel)
     axes[0].set_ylabel(ylabel)

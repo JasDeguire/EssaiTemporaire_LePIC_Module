@@ -1,0 +1,37 @@
+# The fortran modules provided by this target.
+provides
+ mod_bmcccollisions.mod
+ mod_boundary.mod
+ mod_charge_weights.mod
+ mod_chargedeposition.mod
+ mod_chemistrystate.mod
+ mod_collisiondiagnostics.mod
+ mod_collisionproducts.mod
+ mod_collisions.mod
+ mod_collisionsgwenael.mod
+ mod_coulombcollisions.mod
+ mod_debug_checks.mod
+ mod_electricfield.mod
+ mod_generateboundary.mod
+ mod_heating.mod
+ mod_injection.mod
+ mod_intro.mod
+ mod_magneticfield.mod
+ mod_mcccollisions.mod
+ mod_output_2d.mod
+ mod_part_info.mod
+ mod_particle_loader.mod
+ mod_particle_sorting.mod
+ mod_particlebc.mod
+ mod_particlemover.mod
+ mod_particles.mod
+ mod_planemoments.mod
+ mod_poisson_decomp.mod
+ mod_poissonsolver_legacy.mod
+ mod_reactions.mod
+ mod_reactionsdb.mod
+ mod_readconditions.mod
+ mod_restart.mod
+ mod_simparams.mod
+ mod_simulation.mod
+ mod_state.mod

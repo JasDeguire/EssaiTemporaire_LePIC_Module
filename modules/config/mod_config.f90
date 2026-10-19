@@ -21,6 +21,10 @@ module mod_config
     real(real64)      :: omega     = 0.0_real64
     real(real64)      :: kt        = 0.0_real64
     character(len=20) :: rname     = ""
+    ! Number of PIC time steps to run (sim%run). Read from the first line of
+    ! conditions.inp, right after rname - REQUIRED (must be > 0). legacy's
+    ! Src/read_input.f90 reads only rname from that line and ignores the rest.
+    integer           :: nsteps    = 0
     integer           :: ngrid     = 0
     integer           :: ng        = 0
 
@@ -38,6 +42,14 @@ module mod_config
 
     real(real64)      :: phi0_RF   = 0.0_real64, f0_RF = 0.0_real64
     real(real64)      :: phi1_RF   = 0.0_real64, f1_RF = 0.0_real64
+    real(real64)      :: E0_RF     = 0.0_real64
+    ! Planar antenna only: radius (m) of the dielectric window/coil, centred
+    ! on the y-z axis. <= 0 falls back to R_ahp = yr_pow - ymax/2.
+    real(real64)      :: R_win     = 0.0_real64
+    ! Maxwellian heating only: skin depth (m) of a wall-localized heating
+    ! profile w(r) = exp((r-R_ahp)/delta_heat) inside the circular heating
+    ! cross-section. <= 0 keeps the uniform heating (w = 1).
+    real(real64)      :: delta_heat = 0.0_real64
 
     real(real64)      :: Ti(npart)     = 0.0_real64
     real(real64)      :: x_load    = 0.0_real64
@@ -61,7 +73,31 @@ module mod_config
     real(real64)      :: nu_h      = 0.0_real64
     integer           :: opt_inj   = 0
     integer           :: flag_heat = 0
-    integer           :: flag_inj  = 0
+    integer           :: flag_inj     = 0
+    integer           :: flag_coulomb = 0  ! 1 = enable Coulomb collisions (Nanbu 2000)
+
+    ! Selects the E-field calc + gather scheme used by advance_particles_local
+    ! (mod_state.f90) and calc_Efield_* (mod_electricField.f90):
+    !   'momentum' - node-centered E, same trilinear shape function for
+    !                deposit and gather (default, matches legacy/existing
+    !                behavior exactly).
+    !   'energy'   - explicit energy-conserving scheme (Powis & Kaganovich,
+    !                Phys. Plasmas 31, 023901 (2024)): face-centered E,
+    !                nearest-grid-point gather normal to each component,
+    !                linear gather tangentially. Supports plain wall,
+    !                y/z-periodic (flag_pbc/flag_pbcz), and dielectric
+    !                (flag_die) boundaries. Neumann (flag_nmn) is not yet
+    !                supported - see mod_simulation.f90's push_scheme guard.
+    ! Read from conditions.inp (mod_readConditions.f90), the last line
+    ! before END - REQUIRED, not optional: a conditions.inp missing this
+    ! line makes the read hit EOF, which is a hard failure (err=999 ->
+    ! stop_calculation), not a fallback to the default below. Every
+    ! conditions.inp (including archived per-case copies under input_dir/)
+    ! must have this line. legacy's Src/read_input.f90 has no matching read
+    ! for it, but tolerates its presence fine - its own END-search loop
+    ! skips any non-END line, same as it already does for the
+    ! Coulomb-collisions line just above this one in the file.
+    character(len=20) :: push_scheme = 'momentum'
 
     real(real64)      :: n0        = 0.0_real64
     real(real64)      :: ngas      = 0.0_real64
@@ -98,6 +134,8 @@ module mod_config
     integer           :: igrid_sec = 0
 
     integer           :: flag_RFpot = 0
+    integer           :: flag_RFant = 0
+    integer           :: flag_planar_ant = 0
     integer           :: flag_grd   = 0
   end type Config
 

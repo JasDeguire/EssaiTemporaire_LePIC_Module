@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# Build the modular code (run_min) from scratch.
+#
+# Usage: ./build_modular.exe [Release|Debug] [build_dir]
+#   defaults: Release, build  -> executable at build/run_min (what runModular.sh runs)
+#
+# The build dir is wiped first: CMake flags use -xHost, which bakes in the
+# build machine's ISA, so a build/ configured elsewhere must not be reused.
+set -euo pipefail
+
+BUILD_TYPE="${1:-Release}"
+BUILD_DIR="${2:-build}"
+
+cd "$(dirname "$0")"
+
+# If your cluster requires modules, uncomment and adapt:
+# module load intel-oneapi
+# module load intel-oneapi-mpi
+
+echo "===== building modular (run_min): ${BUILD_TYPE} in ${BUILD_DIR}/ ====="
+rm -rf "${BUILD_DIR}"
+FC=mpiifx cmake -S . -B "${BUILD_DIR}" -DCMAKE_BUILD_TYPE="${BUILD_TYPE}"
+cmake --build "${BUILD_DIR}" --target run_min -j"$(nproc)"
+
+echo "Built: ${BUILD_DIR}/run_min"

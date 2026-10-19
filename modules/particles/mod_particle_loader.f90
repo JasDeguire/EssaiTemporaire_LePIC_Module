@@ -43,8 +43,8 @@ contains
 
     real(real64) :: px, py, pz, kp, ki(8)
 
-    integer, allocatable      :: np_tot(:,:), Nh(:)
-    real(real64), allocatable :: vxp(:,:,:,:), sum_dEk(:)
+    integer, allocatable      :: np_tot(:,:)
+    real(real64), allocatable :: vxp(:,:,:,:)
 
     integer(int32) :: iseed_omp
 
@@ -95,14 +95,10 @@ contains
 
     allocate(vxp(6, nmax, ntype_trk, nproc))
     allocate(np_tot(ntype_trk, nproc))
-    allocate(Nh(nproc))
-    allocate(sum_dEk(nproc))
 
     vxp       = 0.0_real64
     np_thread = 0.0_real64
     np_tot    = 0
-    Nh        = 0
-    sum_dEk   = 0.0_real64
 
     if (mpi_rank == 0) then
       write(*,*) " "
@@ -119,8 +115,6 @@ contains
 
     np_tot(:,iproc) = 0
     np_thread(:,:,:,:,iproc) = 0.0_real64
-    sum_dEk(iproc) = 0.0_real64
-    Nh(iproc) = 0
     vz_sav = 0.0_real64
 
     do j = 1, jmax
@@ -228,20 +222,7 @@ contains
       end do
     end if
 
-    ! if (mpi_rank == 0) then
-    !   write(*,*) " "
-    !   write(*,*) "DEBUG: first loaded particles on thread 1"
-    !   do ptype = 1, max(ntype_trk, 2)
-    !     write(*,'(a,i0)') "ptype = ", ptype
-    !     do k = 1, min(5, np_tot(ptype,1))
-    !       write(*,'(i4,6(1x,es16.8))') k, &
-    !            vxp(1,k,ptype,1), vxp(2,k,ptype,1), vxp(3,k,ptype,1), &
-    !            vxp(4,k,ptype,1), vxp(5,k,ptype,1), vxp(6,k,ptype,1)
-    !     end do
-    !   end do
-    ! end if
-
-    deallocate(vxp, np_tot, Nh, sum_dEk)
+    deallocate(vxp, np_tot)
 
   end subroutine load_particles_modular
 

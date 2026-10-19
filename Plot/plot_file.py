@@ -69,8 +69,8 @@ def main() -> int:
     ax1.set_ylabel("z cell")
 
     # 1D slice
-    ax2.plot(arr[16, :], label="LePIC potential", linewidth=3)
-
+    #ax2.plot(arr[16, :], label="LePIC potential", linewidth=3)
+    ax2.plot()
     plt.tight_layout()
     outname = path.with_suffix(".png")
     plt.savefig(outname, dpi=200, bbox_inches="tight")

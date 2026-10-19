@@ -1,5 +1,5 @@
 module mod_heating
-  use iso_fortran_env, only: int32, real64
+  use iso_fortran_env, only: int32, real64, int8
   use mod_particles,   only: ParticleSet
   use mod_rng,         only: ran2
   implicit none
@@ -10,8 +10,8 @@ module mod_heating
 contains
 
   subroutine apply_electron_heating(part, h, vt, iseed, nudt, xl_pow, xr_pow, &
-                                    flag_circxh, flag_ahp, R_ahp, ymax, zmax,   &
-                                    Nm_e, mass_e, p_loss_heating)
+                                    flag_circxh, flag_ahp, R_ahp, delta_heat,   &
+                                    ymax, zmax, Nm_e, mass_e, p_loss_heating)
     class(ParticleSet), intent(inout) :: part
     real(real64),       intent(in)    :: h(3)
     real(real64),       intent(in)    :: vt
@@ -21,33 +21,39 @@ contains
     integer(int32),     intent(in)    :: flag_circxh, flag_ahp
     
     real(real64),       intent(in)    :: R_ahp, ymax, zmax
+    ! > 0: re-sampling probability scaled by exp((r-R_ahp)/delta_heat)
+    real(real64),       intent(in)    :: delta_heat
     real(real64),       intent(in)    :: Nm_e, mass_e
     real(real64),       intent(inout) :: p_loss_heating
 
     integer(int32) :: i, ix
     real(real64)   :: xp_new, yp_new, zp_new
-    real(real64)   :: rnd(2), vz_sav, v2old
+    real(real64)   :: rnd(2), vz_sav, v2old, wh
     integer(int32)            :: ixl_pow, ixr_pow
     
 
     ixl_pow = int(xl_pow / h(1), int32) + 1_int32
     ixr_pow = int(xr_pow / h(1), int32) + 1_int32
 
-    if (.not. allocated(part%x)) return
+    if (.not. allocated(part%pv)) return
     if (part%n <= 0_int32) return
 
     vz_sav = 0.0_real64
 
     do i = 1, part%n
 
-      xp_new = part%x(i)
+      if (allocated(part%flag_dead)) then
+        if (part%flag_dead(i) /= 0_int8) cycle
+      end if
+
+      xp_new = part%pv(1,i)
       ix = int(xp_new / h(1), int32) + 1_int32
 
       if (ix < ixl_pow .or. ix > ixr_pow) cycle
 
       if (flag_circxh == 1_int32) then
-        yp_new = part%y(i)
-        zp_new = part%z(i)
+        yp_new = part%pv(2,i)
+        zp_new = part%pv(3,i)
 
         if (flag_ahp == 0_int32) then
           if ( ((yp_new - ymax/2.0_real64)**2 + (zp_new - zmax/2.0_real64)**2) > R_ahp**2 ) cycle
@@ -56,26 +62,32 @@ contains
         end if
       end if
 
-      rnd(1) = ran2(iseed)
-      if (rnd(1) > nudt) cycle
+      wh = 1.0_real64
+      if (delta_heat > 0.0_real64) then
+        wh = exp((sqrt((part%pv(2,i) - ymax/2.0_real64)**2 + &
+                       (part%pv(3,i) - zmax/2.0_real64)**2) - R_ahp)/delta_heat)
+      end if
 
-      v2old = part%vx(i)*part%vx(i) + part%vy(i)*part%vy(i) + part%vz(i)*part%vz(i)
+      rnd(1) = ran2(iseed)
+      if (rnd(1) > nudt*wh) cycle
+
+      v2old = part%pv(4,i)*part%pv(4,i) + part%pv(5,i)*part%pv(5,i) + part%pv(6,i)*part%pv(6,i)
 
       rnd(1) = ran2(iseed)
       rnd(2) = ran2(iseed)
-      call load_gauss_local(part%vx(i), part%vy(i), vt, rnd)
+      call load_gauss_local(part%pv(4,i), part%pv(5,i), vt, rnd)
 
       if (vz_sav == 0.0_real64) then
         rnd(1) = ran2(iseed)
         rnd(2) = ran2(iseed)
-        call load_gauss_local(part%vz(i), vz_sav, vt, rnd)
+        call load_gauss_local(part%pv(6,i), vz_sav, vt, rnd)
       else
-        part%vz(i) = vz_sav
+        part%pv(6,i) = vz_sav
         vz_sav = 0.0_real64
       end if
 
       p_loss_heating = p_loss_heating + 0.5_real64 * Nm_e * mass_e * &
-            (part%vx(i)*part%vx(i) + part%vy(i)*part%vy(i) + part%vz(i)*part%vz(i) - v2old)
+            (part%pv(4,i)*part%pv(4,i) + part%pv(5,i)*part%pv(5,i) + part%pv(6,i)*part%pv(6,i) - v2old)
 
     end do
 

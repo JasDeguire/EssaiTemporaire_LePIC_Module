@@ -1,9 +1,0 @@
-#!/bin/sh
-
-rm -f /home/fubiani/Shared_WinXP/Miscellaneous/DATA/* 
-cp DATA/DATA_2D/*.mco /home/fubiani/Shared_WinXP/Miscellaneous/DATA/
-perl -i -pe 's/\n/\r\n/;' /home/fubiani/Shared_WinXP/Miscellaneous/DATA/*.mco
-
-
-
-

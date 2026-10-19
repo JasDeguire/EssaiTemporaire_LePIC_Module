@@ -1,3 +1,0 @@
-#!/bin/sh
-
-awk '{_[FNR]=(_[FNR] OFS $1)}END{for (i=1; i<=FNR; i++) {print _[i]}}' jx1*_xz*.dat Ex_*xz*.dat  n1_*xz*.dat T1_*xz*.dat > sum_dens.dat

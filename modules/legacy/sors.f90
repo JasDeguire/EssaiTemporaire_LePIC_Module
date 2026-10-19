@@ -448,7 +448,9 @@ subroutine sor_rb(u,b,h,bcnd,res,n,n3,omega,eps,ksor,kmg,dig,rank,nproc)
      if(dig.eq.0) then
         if( res.le.eps ) exit
      else
-        if( res_s.gt.0.d0 .and. (res/res_s).le.eta ) exit
+        if (abs(res_s) .gt. max(tiny(1.d0),1.d-300)) then
+           if ((res/res_s) .le. eta) exit
+        endif
      endif
      
      res_s= res
@@ -791,7 +793,9 @@ subroutine jacobi(u,b,h,bcnd,res,n,n3,eps,ksor,kmg,dig,rank,nproc)
      if(dig.eq.0) then
         if( res.le.eps ) exit
      else
-        if( res_s.gt.0.d0 .and. (res/res_s).le.eta ) exit
+      if (abs(res_s) .gt. max(tiny(1.d0),1.d-300)) then
+         if ((res/res_s) .le. eta) exit
+      endif
      endif
      
      res_s= res

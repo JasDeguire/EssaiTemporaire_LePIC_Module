@@ -1,3 +1,0 @@
-50 257 97 ! ix,iy,iz
-1 87 ! plot# min/max
-7.8125e-5 7.8125e-5 7.8125e-5 ! dx dy dz (<0 only 1D profiles vs. time)

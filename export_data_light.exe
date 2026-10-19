@@ -1,8 +1,0 @@
-#!/bin/sh
-
-rsync -av DATA Src input_dir distrib_function post_analysis 1d_profiles run.dump* cptoWinOS.exe plot.exe $1
-
-
-
-
-

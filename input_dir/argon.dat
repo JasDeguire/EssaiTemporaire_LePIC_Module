@@ -10,7 +10,7 @@ name   mass  charge  temp.(eV)  n/n0
 [Ar]    -39.95     0.     0.1     1.
 -------------------------------------
 
-REACTION
+EACTION
 [e]+[Ar+]->[e]+[Ar+]
  0.    0.  
  1.    12.5
