@@ -789,6 +789,7 @@ contains
           if (self%state%cfg%flag_inj == 1) vt_heat = self%state%params%vt0(1)
           if (allocated(self%state%Nh))      self%state%Nh      = 0_int32
           if (allocated(self%state%sum_dEk)) self%state%sum_dEk = 0.0_real64
+          if (allocated(self%state%sum_wh))  self%state%sum_wh  = 0.0_real64
           call self%state%apply_electron_heating_local(vt_heat)
         end if
       end if

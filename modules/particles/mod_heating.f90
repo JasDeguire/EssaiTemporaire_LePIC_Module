@@ -10,8 +10,8 @@ module mod_heating
 contains
 
   subroutine apply_electron_heating(part, h, vt, iseed, nudt, xl_pow, xr_pow, &
-                                    flag_circxh, flag_ahp, R_ahp, ymax, zmax,   &
-                                    Nm_e, mass_e, p_loss_heating)
+                                    flag_circxh, flag_ahp, R_ahp, delta_heat,   &
+                                    ymax, zmax, Nm_e, mass_e, p_loss_heating)
     class(ParticleSet), intent(inout) :: part
     real(real64),       intent(in)    :: h(3)
     real(real64),       intent(in)    :: vt
@@ -21,12 +21,14 @@ contains
     integer(int32),     intent(in)    :: flag_circxh, flag_ahp
     
     real(real64),       intent(in)    :: R_ahp, ymax, zmax
+    ! > 0: re-sampling probability scaled by exp((r-R_ahp)/delta_heat)
+    real(real64),       intent(in)    :: delta_heat
     real(real64),       intent(in)    :: Nm_e, mass_e
     real(real64),       intent(inout) :: p_loss_heating
 
     integer(int32) :: i, ix
     real(real64)   :: xp_new, yp_new, zp_new
-    real(real64)   :: rnd(2), vz_sav, v2old
+    real(real64)   :: rnd(2), vz_sav, v2old, wh
     integer(int32)            :: ixl_pow, ixr_pow
     
 
@@ -60,8 +62,14 @@ contains
         end if
       end if
 
+      wh = 1.0_real64
+      if (delta_heat > 0.0_real64) then
+        wh = exp((sqrt((part%pv(2,i) - ymax/2.0_real64)**2 + &
+                       (part%pv(3,i) - zmax/2.0_real64)**2) - R_ahp)/delta_heat)
+      end if
+
       rnd(1) = ran2(iseed)
-      if (rnd(1) > nudt) cycle
+      if (rnd(1) > nudt*wh) cycle
 
       v2old = part%pv(4,i)*part%pv(4,i) + part%pv(5,i)*part%pv(5,i) + part%pv(6,i)*part%pv(6,i)
 

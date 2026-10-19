@@ -23,8 +23,12 @@ module mod_chargeDeposition
     integer(int32) :: flag_circxh = 0_int32, flag_ahp = 0_int32
     real(real64)   :: R2 = 0.0_real64, yc = 0.0_real64, zc = 0.0_real64
     real(real64)   :: ek_coef = 0.0_real64      ! 0.5*Nm*mass
+    ! Skin-depth weighting w = exp((r-R)/delta) (delta <= 0: w = 1);
+    ! sum_dEk and sum_w are then sums of w*Ek and w.
+    real(real64)   :: R = 0.0_real64, delta = 0.0_real64
     integer(int32) :: Nh = 0_int32
     real(real64)   :: sum_dEk = 0.0_real64
+    real(real64)   :: sum_w = 0.0_real64
   end type HeatRegionTally
 
 contains
@@ -61,6 +65,7 @@ contains
     logical        :: do_heat, in_heat
     integer(int32) :: ixh, hixl, hixr, hcirc, hahp, nh_loc
     real(real64)   :: hR2, hyc, hzc, hek, r2, sdek_loc
+    real(real64)   :: hR, hdelta, wh, sw_loc
 
     integer(int32) :: i
     integer(int32) :: ix, iy, iz
@@ -92,12 +97,15 @@ contains
     do_heat  = present(heat)
     nh_loc   = 0_int32
     sdek_loc = 0.0_real64
+    sw_loc   = 0.0_real64
     hixl = 0_int32; hixr = -1_int32; hcirc = 0_int32; hahp = 0_int32
     hR2 = 0.0_real64; hyc = 0.0_real64; hzc = 0.0_real64; hek = 0.0_real64
+    hR = 0.0_real64; hdelta = 0.0_real64
     if (do_heat) then
       hixl = heat%ixl;  hixr = heat%ixr
       hcirc = heat%flag_circxh;  hahp = heat%flag_ahp
       hR2 = heat%R2;  hyc = heat%yc;  hzc = heat%zc;  hek = heat%ek_coef
+      hR = heat%R;  hdelta = heat%delta
     end if
 
     do i = 1, part%n
@@ -124,7 +132,10 @@ contains
             end if
           end if
           if (in_heat) then
-            sdek_loc = sdek_loc + hek * (part%pv(4,i)**2 + part%pv(5,i)**2 + part%pv(6,i)**2)
+            wh = 1.0_real64
+            if (hdelta > 0.0_real64) wh = exp((sqrt((y-hyc)**2 + (z-hzc)**2) - hR)/hdelta)
+            sdek_loc = sdek_loc + wh * hek * (part%pv(4,i)**2 + part%pv(5,i)**2 + part%pv(6,i)**2)
+            sw_loc   = sw_loc + wh
             nh_loc   = nh_loc + 1_int32
           end if
         end if
@@ -207,6 +218,7 @@ contains
     if (do_heat) then
       heat%Nh      = heat%Nh + nh_loc
       heat%sum_dEk = heat%sum_dEk + sdek_loc
+      heat%sum_w   = heat%sum_w + sw_loc
     end if
   end subroutine deposit_particle_set_to_np_thread
 

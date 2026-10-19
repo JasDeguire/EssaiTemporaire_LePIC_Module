@@ -46,6 +46,10 @@ module mod_config
     ! Planar antenna only: radius (m) of the dielectric window/coil, centred
     ! on the y-z axis. <= 0 falls back to R_ahp = yr_pow - ymax/2.
     real(real64)      :: R_win     = 0.0_real64
+    ! Maxwellian heating only: skin depth (m) of a wall-localized heating
+    ! profile w(r) = exp((r-R_ahp)/delta_heat) inside the circular heating
+    ! cross-section. <= 0 keeps the uniform heating (w = 1).
+    real(real64)      :: delta_heat = 0.0_real64
 
     real(real64)      :: Ti(npart)     = 0.0_real64
     real(real64)      :: x_load    = 0.0_real64

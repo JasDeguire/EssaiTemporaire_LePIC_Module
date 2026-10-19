@@ -60,7 +60,7 @@ contains
   subroutine build_boundary(dom, cfg, fld, mpi_rank)
     implicit none
     type(Domain), intent(inout) :: dom
-    type(Config), intent(in)    :: cfg
+    type(Config), intent(inout) :: cfg
     type(Fields), intent(inout) :: fld  
     integer,      intent(in)    :: mpi_rank
     type(GeometrySegments) :: geo
@@ -124,6 +124,11 @@ contains
     dom%flag_pbcz = outp%flag_pbcz
     dom%flag_nmn  = outp%flag_nmn
     dom%flag_die  = outp%flag_die
+
+    ! Circular cross-section spanning the heating region: heating and its
+    ! tally are then restricted to r <= R_ahp (legacy sets this global
+    ! directly in generate_boundary.f90:109).
+    cfg%flag_circxh = outp%flag_circxh
 
     dom%zg_sec    = outp%zg_sec
     dom%n_cath    = outp%n_cath

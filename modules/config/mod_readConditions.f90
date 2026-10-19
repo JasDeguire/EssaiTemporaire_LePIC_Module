@@ -79,7 +79,7 @@ module mod_readConditions
         character(len=3) :: end_file
         character(len=256) :: line1
         character(len=1) :: ans
-        character(len=256) :: line_rf
+        character(len=256) :: line_rf, line_heat
         character(len=16)  :: rf_mode
         integer :: ios
 
@@ -144,7 +144,15 @@ module mod_readConditions
         cfg%y0 = cfg%y0*1.0e-2_real64
         cfg%z0 = cfg%z0*1.0e-2_real64
 
-        read(10,*,err=999) cfg%Pabs, cfg%nu_h
+        ! Pabs, nu_h [, delta_heat(cm)]: same one-record trick as the RF line
+        ! below, so an absent optional value can't eat the next line.
+        read(10,'(a)',err=999,end=999) line_heat
+        read(line_heat,*,iostat=ios) cfg%Pabs, cfg%nu_h, cfg%delta_heat
+        if (ios /= 0) then
+            cfg%delta_heat = 0.0_real64
+            read(line_heat,*,err=999) cfg%Pabs, cfg%nu_h
+        end if
+        cfg%delta_heat = cfg%delta_heat*1.0e-2_real64
         cfg%flag_heat = 1
         if (cfg%nu_h < 0.0_real64) cfg%flag_heat = 0
 

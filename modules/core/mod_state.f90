@@ -86,6 +86,8 @@ module mod_state
     integer(int32) :: nproc = 1
     integer(int32), allocatable :: Nh(:)
     real(real64), allocatable :: sum_dEk(:)
+    ! Heating weights sum (= real(Nh) unless cfg%delta_heat > 0)
+    real(real64), allocatable :: sum_wh(:)
 
     real(real64), allocatable :: P_loss(:,:,:)
     real(real64), allocatable :: p_mac(:,:,:,:)
@@ -234,6 +236,19 @@ contains
     if (self%cfg%flag_circxh == 1 .or. self%cfg%flag_RFant == 1) then
       self%cfg%R_ahp = self%cfg%yr_pow - self%dom%ymax / 2.0_real64
     end if
+
+    ! Skin-depth heating needs the circular heating cross-section (inner
+    ! side) for r and R_ahp to mean anything.
+    if (self%cfg%flag_heat == 1 .and. self%cfg%delta_heat > 0.0_real64) then
+      if (self%cfg%flag_circxh /= 1 .or. self%cfg%flag_ahp /= 0) then
+        if (self%mpi_rank == 0) write(*,'(a)') 'Skin-depth heating (delta_heat > 0) ' // &
+          'needs a circular cross-section spanning the heating region, please correct ...'
+        call stop_calculation
+      end if
+      if (self%mpi_rank == 0) write(*,'(1x,a,f7.3,a,f7.3)') &
+        'Skin-depth heating: w(r) = exp((r-R)/delta), R(cm)=', self%cfg%R_ahp*1.0e2_real64, &
+        ', delta(cm)=', self%cfg%delta_heat*1.0e2_real64
+    end if
     ! Planar antenna: an explicit window radius (may be smaller than the
     ! domain cross-section) overrides the yr_pow-derived radius.
     if (self%cfg%flag_planar_ant == 1 .and. self%cfg%R_win > 0.0_real64) then
@@ -327,8 +342,10 @@ contains
 
     allocate(self%Nh(self%nproc))
     allocate(self%sum_dEk(self%nproc))
+    allocate(self%sum_wh(self%nproc))
     self%Nh      = 0_int32
     self%sum_dEk = 0.0_real64
+    self%sum_wh  = 0.0_real64
 
     allocate(self%np_avg_xy(0:self%dom%n(1)+2,0:self%dom%n(2)+2,self%ntype))
     allocate(self%np_avg_xz(0:self%dom%n(1)+2,0:self%dom%n(3)+2,self%ntype))
@@ -592,6 +609,7 @@ contains
           flag_circxh    = self%cfg%flag_circxh, &
           flag_ahp       = self%cfg%flag_ahp, &
           R_ahp          = self%cfg%R_ahp, &
+          delta_heat     = self%cfg%delta_heat, &
           ymax           = self%dom%ymax, &
           zmax           = self%dom%zmax, &
           Nm_e           = self%params%Nm(1), &
@@ -829,8 +847,11 @@ contains
       heat_tpl%yc          = self%dom%ymax / 2.0_real64
       heat_tpl%zc          = self%dom%zmax / 2.0_real64
       heat_tpl%ek_coef     = 0.5_real64 * self%params%Nm(1) * self%chem%mass(1)
+      heat_tpl%R           = self%cfg%R_ahp
+      heat_tpl%delta       = self%cfg%delta_heat
       heat_tpl%Nh          = 0_int32
       heat_tpl%sum_dEk     = 0.0_real64
+      heat_tpl%sum_w       = 0.0_real64
     end if
 
     !$omp parallel do private(iproc,ptype,q_species,m_species,use_boris,qmacro,tw0,tw1, &
@@ -1317,6 +1338,7 @@ contains
       if (do_heat_tally) then
         self%Nh(iproc)      = heat_loc%Nh
         self%sum_dEk(iproc) = heat_loc%sum_dEk
+        self%sum_wh(iproc)  = heat_loc%sum_w
       end if
       tw1 = omp_get_wtime()
       t_deposit_thread(iproc) = tw1 - tw0
@@ -1400,6 +1422,7 @@ contains
     integer :: ierr
     integer(int32) :: sum_Nh, sum_Nh_global
     real(real64)   :: sum_dEk_tot, sum_dEk_global
+    real(real64)   :: sum_w, sum_w_global
     real(real64)   :: Te
 
     vt_heat = self%params%vt0(1)
@@ -1409,20 +1432,26 @@ contains
 
     sum_Nh       = sum(self%Nh)
     sum_dEk_tot  = sum(self%sum_dEk)
+    sum_w        = sum(self%sum_wh)
 
     sum_Nh_global  = sum_Nh
     sum_dEk_global = sum_dEk_tot
+    sum_w_global   = sum_w
 
     if (self%mpi_size > 1) then
       call MPI_Allreduce(sum_Nh, sum_Nh_global, 1, MPI_INTEGER, MPI_SUM, self%comm, ierr)
       call MPI_Allreduce(sum_dEk_tot, sum_dEk_global, 1, MPI_DOUBLE_PRECISION, MPI_SUM, self%comm, ierr)
+      call MPI_Allreduce(sum_w, sum_w_global, 1, MPI_DOUBLE_PRECISION, MPI_SUM, self%comm, ierr)
     end if
 
-    if (sum_Nh_global <= 0) return
+    if (sum_Nh_global <= 0 .or. sum_w_global <= 0.0_real64) return
 
+    ! Electron i is re-sampled with probability nudt*w_i, so the expected
+    ! energy gain is nudt*sum_i w_i*(1.5*Nm*qe*Te - Ek_i); setting it to
+    ! Pabs*dt_heat gives Te below (w = 1: sum_w = Nh, the legacy formula).
     Te = (2.0_real64/3.0_real64) * &
          (sum_dEk_global + self%cfg%Pabs / self%cfg%nu_h) / &
-         (self%params%Nm(1) * qe * real(sum_Nh_global, real64))
+         (self%params%Nm(1) * qe * sum_w_global)
 
     if (Te > 0.0_real64) then
       vt_heat = sqrt(2.0_real64 * qe * Te / abs(self%chem%mass(1)))
