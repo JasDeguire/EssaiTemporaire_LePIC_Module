@@ -154,7 +154,9 @@ contains
 
     self%nudt = cfg%nu_h * ( real(self%nb_step_heating, real64) * self%dt )
 
-    if (cfg%flag_RFant == 1) then
+    ! Also the update period of the self-consistent heating skin depth
+    ! (never active together with the antenna, which forces flag_heat=0).
+    if (cfg%flag_RFant == 1 .or. (cfg%flag_delta_sc == 1 .and. cfg%flag_heat == 1)) then
       self%ns_RF = nint(1.0_real64 / cfg%f0_RF / self%dt, int32)
     end if
 

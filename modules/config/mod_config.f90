@@ -50,6 +50,10 @@ module mod_config
     ! profile w(r) = exp((r-R_ahp)/delta_heat) inside the circular heating
     ! cross-section. <= 0 keeps the uniform heating (w = 1).
     real(real64)      :: delta_heat = 0.0_real64
+    ! 1: delta_heat is recomputed every RF period (1/f0_RF) as c/wp of the
+    ! electron density averaged over the previous skin layer (input < 0,
+    ! |input| = initial guess). See State%update_heating_skin_depth.
+    integer           :: flag_delta_sc = 0
 
     real(real64)      :: Ti(npart)     = 0.0_real64
     real(real64)      :: x_load    = 0.0_real64

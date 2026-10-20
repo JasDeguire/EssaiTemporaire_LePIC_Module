@@ -173,6 +173,8 @@ module mod_state
     procedure :: sort_particles_local
     procedure :: apply_electron_heating_local
     procedure :: compute_heating_region_moments
+    procedure :: update_heating_skin_depth
+    procedure :: write_skin_depth_record
     procedure :: update_heating_vt
     procedure :: update_rf_convergence
     procedure :: compute_plane_moments_local
@@ -248,6 +250,9 @@ contains
       if (self%mpi_rank == 0) write(*,'(1x,a,f7.3,a,f7.3)') &
         'Skin-depth heating: w(r) = exp((r-R)/delta), R(cm)=', self%cfg%R_ahp*1.0e2_real64, &
         ', delta(cm)=', self%cfg%delta_heat*1.0e2_real64
+      if (self%cfg%flag_delta_sc == 1 .and. self%mpi_rank == 0) write(*,'(1x,a,i0,a)') &
+        'Skin depth recomputed every ', self%params%ns_RF, &
+        ' steps from <ne> over R-delta <= r <= R (delta above = initial guess)'
     end if
     ! Planar antenna: an explicit window radius (may be smaller than the
     ! domain cross-section) overrides the yr_pow-derived radius.
@@ -1464,6 +1469,81 @@ contains
   end subroutine update_heating_vt
 
 
+  subroutine update_heating_skin_depth(self, istep)
+    ! Self-consistent skin depth of the Maxwellian heating profile
+    ! w(r) = exp((r-R_ahp)/delta_heat): every RF period, delta_heat relaxes
+    ! toward c/wp of the electron density averaged over the previous skin
+    ! layer R_ahp-delta_heat <= r <= R_ahp of the heating region. Same
+    ! grid loop as update_rf_convergence below, but over the layer the
+    ! field reaches rather than the whole cross-section.
+    class(State),   intent(inout) :: self
+    integer(int32), intent(in)    :: istep
+
+    ! Under-relaxation: delta can feed back on the layer it averages over
+    real(real64), parameter :: alpha = 0.3_real64
+    integer(int32) :: ix, iy, iz, cnt
+    integer(int32) :: ixl, ixr, iyl, iyr, izl, izr
+    real(real64)   :: yp, zp, r2, rin2, ymax_half, zmax_half
+    real(real64)   :: np_layer, wp_layer, delta_calc, delta_min
+
+    call self%sync_np()
+
+    ymax_half = self%dom%ymax / 2.0_real64
+    zmax_half = self%dom%zmax / 2.0_real64
+    rin2 = max(0.0_real64, self%cfg%R_ahp - self%cfg%delta_heat)**2
+
+    ixl = int(max(0.0_real64, self%cfg%xl_pow)/self%dom%h(1), int32) + 1_int32
+    ixr = int(min(self%dom%xmax, self%cfg%xr_pow)/self%dom%h(1), int32) + 1_int32
+    iyl = int(max(0.0_real64, ymax_half - self%cfg%R_ahp)/self%dom%h(2), int32) + 1_int32
+    iyr = int(min(self%dom%ymax, ymax_half + self%cfg%R_ahp)/self%dom%h(2), int32) + 1_int32
+    izl = int(max(0.0_real64, zmax_half - self%cfg%R_ahp)/self%dom%h(3), int32) + 1_int32
+    izr = int(min(self%dom%zmax, zmax_half + self%cfg%R_ahp)/self%dom%h(3), int32) + 1_int32
+
+    np_layer = 0.0_real64
+    cnt      = 0_int32
+    !$omp parallel do collapse(2) private(iy,iz,ix,yp,zp,r2) &
+    !$omp&  reduction(+:np_layer,cnt) schedule(static)
+    do iz = izl, izr
+      do iy = iyl, iyr
+        yp = real(iy-1, real64)*self%dom%h(2)
+        zp = real(iz-1, real64)*self%dom%h(3)
+        r2 = (yp-ymax_half)**2 + (zp-zmax_half)**2
+        if (r2 >= rin2 .and. r2 <= self%cfg%R_ahp**2) then
+          do ix = ixl, ixr
+            np_layer = np_layer + self%fld%np(ix,iy,iz,1)
+            cnt      = cnt + 1_int32
+          end do
+        end if
+      end do
+    end do
+    !$omp end parallel do
+
+    self%nstep_RF = 0_int32
+    if (cnt <= 0_int32) return
+    np_layer = np_layer / real(cnt, real64)
+    if (np_layer <= 0.0_real64) return
+
+    ! Physical eps0 (undo k_eps0), as in update_rf_convergence
+    wp_layer   = sqrt( np_layer * self%chem%charge(1)**2 / &
+                       ((eps0/self%cfg%k_eps0) * self%chem%mass(1)) )
+    delta_calc = c / wp_layer
+
+    ! Bounded between ~2 cells and the heating radius (beyond R the
+    ! profile is essentially uniform anyway)
+    delta_min = 2.0_real64 * max(self%dom%h(2), self%dom%h(3))
+    self%cfg%delta_heat = (1.0_real64 - alpha)*self%cfg%delta_heat + alpha*delta_calc
+    self%cfg%delta_heat = min(max(self%cfg%delta_heat, delta_min), self%cfg%R_ahp)
+
+    if (self%mpi_rank == 0) then
+      write(*,'(1x,a,i0,a,es10.2,a,f7.3,a,f7.3)') 'it=', istep, &
+        ', <ne>_layer(/m^3)=', np_layer, ', c/wp(cm)=', delta_calc*1.0e2_real64, &
+        ', heating skin depth delta(cm)=', self%cfg%delta_heat*1.0e2_real64
+    end if
+    call self%write_skin_depth_record(istep, np_layer, delta_calc, self%cfg%delta_heat, &
+                                      0.0_real64, 0.0_real64)
+  end subroutine update_heating_skin_depth
+
+
   subroutine update_rf_convergence(self, istep)
     ! RF antenna heating: periodic (every ns_RF steps) convergence step -
     ! recompute the skin depth from the actual local electron density, and
@@ -1579,11 +1659,41 @@ contains
         ', <P_RF>(W)=', P_RFtot, ', <np>(/m^3)=', np_avgRF, &
         ', skin depth gam(cm)=', self%gams*1.0e2_real64
     end if
+    call self%write_skin_depth_record(istep, np_avgRF, self%gams, self%gams, &
+                                      self%cfg%E0_RF, P_RFtot)
 
     self%P_RF     = 0.0_real64
     self%mom_RF   = 0.0_real64
     self%nstep_RF = 0_int32
   end subroutine update_rf_convergence
+
+
+  subroutine write_skin_depth_record(self, istep, ne, delta_calc, delta, E0, P)
+    ! Appends one line to Output/skin_depth.dat (rank 0) at every skin-depth
+    ! update, i.e. every ns_RF steps: the value then holds until the next
+    ! line. Written by update_rf_convergence (RF antenna: delta = gams,
+    ! E0_RF and absorbed power filled) and update_heating_skin_depth
+    ! (self-consistent Maxwellian heating: E0 = P = 0). Cleared at the
+    ! start of a fresh run by Simulation%run, appended to on restart.
+    class(State),   intent(in) :: self
+    integer(int32), intent(in) :: istep
+    real(real64),   intent(in) :: ne, delta_calc, delta, E0, P
+
+    integer :: u
+    logical :: file_exists
+
+    if (self%mpi_rank /= 0) return
+    inquire(file='./Output/skin_depth.dat', exist=file_exists)
+    open(newunit=u, file='./Output/skin_depth.dat', status='unknown', &
+         position='append', action='write')
+    if (.not. file_exists) then
+      write(u,'(a)') '# Time(s), it, <ne>(m^-3) over the skin layer (heating) or heated ' // &
+          'volume (antenna), c/wp(cm), delta used(cm), E0_RF(V/m), P_RF(W)'
+    end if
+    write(u,'(1x,es16.8,1x,i12,5(1x,es16.8))') self%params%dt*real(istep, real64), istep, &
+        ne, delta_calc*1.0e2_real64, delta*1.0e2_real64, E0, P
+    close(u)
+  end subroutine write_skin_depth_record
 
 
   subroutine compute_plane_moments_local(self)

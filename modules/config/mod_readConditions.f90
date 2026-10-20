@@ -152,7 +152,9 @@ module mod_readConditions
             cfg%delta_heat = 0.0_real64
             read(line_heat,*,err=999) cfg%Pabs, cfg%nu_h
         end if
-        cfg%delta_heat = cfg%delta_heat*1.0e-2_real64
+        cfg%flag_delta_sc = 0
+        if (cfg%delta_heat < 0.0_real64) cfg%flag_delta_sc = 1
+        cfg%delta_heat = abs(cfg%delta_heat)*1.0e-2_real64
         cfg%flag_heat = 1
         if (cfg%nu_h < 0.0_real64) cfg%flag_heat = 0
 
@@ -278,6 +280,12 @@ module mod_readConditions
                     '(initial guess) and Pabs > 0 (target power), please correct ...'
                 call stop_calculation
             end if
+        end if
+
+        if (cfg%flag_delta_sc == 1 .and. cfg%flag_heat == 1 .and. cfg%f0_RF <= 0.0_real64) then
+            if (mpi_rank == 0) write(*,'(a)') 'Self-consistent skin depth (delta < 0) needs ' // &
+                'f0 > 0 on the RF line (update period 1/f0), please correct ...'
+            call stop_calculation
         end if
 
         if (cfg%R_win > 0.0_real64 .and. cfg%flag_planar_ant == 0 .and. mpi_rank == 0) &

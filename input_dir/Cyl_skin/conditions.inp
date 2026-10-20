@@ -7,7 +7,7 @@ argon.dat 300000 ! name of file storing reactions, # of time steps (~54 us; ion 
 10. ! Particle loading region [cm]
 0 ! # of magnetic field files (<0 positive ions not magnetized)
 1 1 1 ! Grid for the magnetic field map
-0.03 1.d8 1. ! Pabs(W) (<0 to turn off), Heating frequency (<0 == off), skin depth delta(cm) (<=0: uniform): heating weight exp((r-R)/delta)
+0.03 1.d8 1. ! Pabs(W) (<0 to turn off), Heating frequency (<0 == off), skin depth delta(cm) (0: uniform, <0: recomputed every 1/f0 from c/wp in the skin layer, |delta| = initial guess): heating weight exp((r-R)/delta)
 -1.d0 2 ! Inject current I(A) (<0 == off), options [1=fixed, 2= equal to ion losses, 3= e-beam (+Z), 4= emmissive cath. (+Z), <0 cosine]
 1.d-3 ! t_max(s)
 0.15 ! time coeff. k ; dt= k*dx/vt (dt ~ 1.8e-10 s, wp*dt ~ 0.1 at 1e14)

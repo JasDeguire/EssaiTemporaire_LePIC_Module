@@ -714,6 +714,15 @@ contains
       self%state%nstep_RF = self%state%nstep_RF + 1_int32
     end if
 
+    ! Self-consistent skin depth of the Maxwellian heating profile, same
+    ! cadence (and step counter) as the antenna update above.
+    if (self%state%cfg%flag_delta_sc == 1 .and. self%state%cfg%flag_heat == 1) then
+      if (self%state%nstep_RF >= self%state%params%ns_RF) then
+        call self%state%update_heating_skin_depth(istep)
+      end if
+      self%state%nstep_RF = self%state%nstep_RF + 1_int32
+    end if
+
     ! E/rho
     !
     ! rho is already built: by the PREVIOUS step's deposit_all_particles
@@ -1042,6 +1051,7 @@ contains
       call reset_output_file('./Output/Ptot.dat')
       call reset_output_file('./Output/Mtot.dat')
       call reset_output_file('./Output/phi_Te_ne_cntr.dat')
+      call reset_output_file('./Output/skin_depth.dat')
       do ptype = 1_int32, self%state%ntype
         write(pnum,'(i0)') ptype
         call reset_output_file('./Output/Iw'//trim(pnum)//'.dat')
