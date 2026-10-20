@@ -6,4 +6,4 @@ slurm*
 *.dat
 *.data
 *.txt
-./builld/*
+build/
