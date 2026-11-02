@@ -60,7 +60,7 @@ contains
     real(real64),       intent(in)    :: qmacro
     real(real64),       intent(inout) :: sum_q_xz_local(0:n(1)+2,0:n(3)+2)
     real(real64),       intent(inout) :: sum_q_yz_local(2,0:n(2)+2,0:n(3)+2)
-    real(real64),       intent(inout) :: p_mac_boundary(:,:)
+    real(real64),       intent(inout) :: p_mac_boundary(:,0:)
     real(real64),       intent(in)    :: mass_species
     real(real64),       intent(inout) :: P_loss_wall
     real(real64),       intent(in)    :: Nm_species

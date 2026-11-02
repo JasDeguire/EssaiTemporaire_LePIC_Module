@@ -244,9 +244,12 @@ module mod_readConditions
         !   'Planar'    : inductive planar coil under a dielectric window at x=xl_pow
         !                 (legacy-modular 'P'). Field decays axially away from the
         !                 window; radial profile bounded at the window radius R_win.
+        !   'Coil'      : same window as 'Planar', field from the real coil turns
+        !                 (input_dir/coil.inp) incl. B_RF; E0_RF = coil current I (A).
         cfg%flag_RFpot      = 0
         cfg%flag_RFant      = 0
         cfg%flag_planar_ant = 0
+        cfg%flag_coil_ant   = 0
         select case (to_lower(rf_mode))
         case ('no', 'n', 'none', 'off')
         case ('electrode', 'y', 'd')
@@ -256,9 +259,16 @@ module mod_readConditions
         case ('planar', 'p')
             cfg%flag_RFant      = 1
             cfg%flag_planar_ant = 1
+        case ('coil', 'c')
+            ! Planar window/skin-depth/power loop, but the field comes from
+            ! the real turns in input_dir/coil.inp (mod_coilField.f90).
+            cfg%flag_RFant      = 1
+            cfg%flag_planar_ant = 1
+            cfg%flag_coil_ant   = 1
+            call read_coil_turns(cfg, mpi_rank)
         case default
             if (mpi_rank == 0) write(*,'(a)') 'Unknown RF mode "' // trim(rf_mode) // &
-                '" in conditions.inp (expected No, Electrode, Wrapped or Planar)'
+                '" in conditions.inp (expected No, Electrode, Wrapped, Planar or Coil)'
             call stop_calculation
         end select
 
@@ -327,6 +337,41 @@ module mod_readConditions
             '<reactions file> <number of time steps (> 0)>'
         call stop_calculation
     end subroutine read_input_cfg
+
+
+    subroutine read_coil_turns(cfg, mpi_rank)
+        ! RF mode 'Coil': turn geometry from input_dir/coil.inp -
+        !   line 1     : number of turns N
+        !   N lines    : a(cm), x(cm), w   (radius, axial position, current
+        !                relative to the coil current I; 1 for a series coil)
+        ! Trailing '!' comments are allowed on every line.
+        type(Config), intent(inout) :: cfg
+        integer,      intent(in)    :: mpi_rank
+        integer :: u, j, ios
+
+        open(newunit=u, file='./input_dir/coil.inp', status='old', action='read', iostat=ios)
+        if (ios /= 0) then
+            if (mpi_rank == 0) write(*,'(a)') 'RF mode "Coil" needs input_dir/coil.inp, ' // &
+                'please correct ...'
+            call stop_calculation
+        end if
+        read(u,*,iostat=ios) cfg%n_coil
+        if (ios /= 0 .or. cfg%n_coil <= 0) goto 997
+        if (allocated(cfg%coil_a)) deallocate(cfg%coil_a, cfg%coil_x, cfg%coil_w)
+        allocate(cfg%coil_a(cfg%n_coil), cfg%coil_x(cfg%n_coil), cfg%coil_w(cfg%n_coil))
+        do j = 1, cfg%n_coil
+            read(u,*,iostat=ios) cfg%coil_a(j), cfg%coil_x(j), cfg%coil_w(j)
+            if (ios /= 0 .or. cfg%coil_a(j) <= 0.0_real64) goto 997
+        end do
+        close(u)
+        cfg%coil_a = cfg%coil_a*1.0e-2_real64
+        cfg%coil_x = cfg%coil_x*1.0e-2_real64
+        return
+
+        997 if (mpi_rank == 0) write(*,'(a)') 'input_dir/coil.inp must be: N, then N lines ' // &
+            'a(cm) x(cm) w with a > 0, please correct ...'
+        call stop_calculation
+    end subroutine read_coil_turns
 
     pure function to_lower(s) result(r)
         character(len=*), intent(in) :: s

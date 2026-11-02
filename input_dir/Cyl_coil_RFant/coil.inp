@@ -1,0 +1,5 @@
+4             ! number of turns: flat 4-turn spiral as concentric loops, under the x=0 window
+1.0 -0.5 1.   ! a(cm) x(cm) relative current (series coil: 1); x=-0.5 cm = 5 mm window
+2.0 -0.5 1.
+3.0 -0.5 1.
+4.0 -0.5 1.

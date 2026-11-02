@@ -207,6 +207,7 @@ add_library(pic_core_obj OBJECT
   ${MODULES_DIR}/fields/mod_chargeDeposition.f90
   ${MODULES_DIR}/fields/mod_magneticField.f90
   ${MODULES_DIR}/fields/mod_electricField.f90
+  ${MODULES_DIR}/fields/mod_coilField.f90
 
   ${MODULES_DIR}/geometry/mod_generateBoundary.f90
   ${MODULES_DIR}/geometry/mod_boundary.f90

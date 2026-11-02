@@ -46,6 +46,11 @@ module mod_config
     ! Planar antenna only: radius (m) of the dielectric window/coil, centred
     ! on the y-z axis. <= 0 falls back to R_ahp = yr_pow - ymax/2.
     real(real64)      :: R_win     = 0.0_real64
+    ! Coil antenna only (RF mode 'Coil', read from input_dir/coil.inp):
+    ! per-turn radius (m), axial position (m) and current relative to the
+    ! coil current I. In this mode E0_RF holds I (A), not a field (V/m).
+    integer                   :: n_coil = 0
+    real(real64), allocatable :: coil_a(:), coil_x(:), coil_w(:)
     ! Maxwellian heating only: skin depth (m) of a wall-localized heating
     ! profile w(r) = exp((r-R_ahp)/delta_heat) inside the circular heating
     ! cross-section. <= 0 keeps the uniform heating (w = 1).
@@ -140,6 +145,7 @@ module mod_config
     integer           :: flag_RFpot = 0
     integer           :: flag_RFant = 0
     integer           :: flag_planar_ant = 0
+    integer           :: flag_coil_ant = 0
     integer           :: flag_grd   = 0
   end type Config
 

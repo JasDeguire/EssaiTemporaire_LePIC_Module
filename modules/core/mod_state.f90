@@ -26,6 +26,7 @@ module mod_state
   use mod_particle_sorting, only: sort_particles_by_cell, redistribute_species_by_cell, check_particles_are_sorted, check_cell_indexing
   use mod_particleMover,    only: move_and_bc_electrostatic, move_and_bc_electrostatic_fast, &
                                    move_and_bc_boris, move_and_bc_boris_fast
+  use mod_coilField,        only: CoilField
   use mod_particleBC,       only: apply_particle_bc, SeeParams
   use mod_chargeDeposition, only: deposit_particle_set_to_np_thread, HeatRegionTally
   use mod_magneticField,    only: MagneticField
@@ -109,6 +110,9 @@ module mod_state
     ! folded into P_loss(2,:,:)/reset every ns_RF steps.
     real(real64) :: gams = 0.0_real64
     real(real64), allocatable :: P_RF(:,:)
+    ! RF mode 'Coil' only: (r,x) field table of the real turns, built once
+    ! at init - see mod_coilField.f90.
+    type(CoilField) :: coil
     ! Number of mover steps accumulated in P_RF since the last
     ! update_rf_convergence. Drives the convergence cadence instead of
     ! mod(istep,ns_RF), so a restart (istep offset not a multiple of
@@ -271,7 +275,11 @@ contains
         write(*,'(1x,a,i0,a,f6.2)') &
           '# of time steps per RF period=', self%params%ns_RF, &
           ', RF skin depth gam(cm)=', self%gams*1.0e2_real64
-        if (self%cfg%flag_planar_ant == 1) then
+        if (self%cfg%flag_coil_ant == 1) then
+          write(*,'(1x,a,f7.3,a,f7.3,a)') 'RF antenna: Coil, density-average radius (cm)=', &
+            self%cfg%R_ahp*1.0e2_real64, ', window at x (cm)=', &
+            max(0.0_real64, self%cfg%xl_pow)*1.0e2_real64, ', E0_RF = coil current I (A)'
+        else if (self%cfg%flag_planar_ant == 1) then
           write(*,'(1x,a,f7.3,a,f7.3)') 'RF antenna: Planar, window radius (cm)=', &
             self%cfg%R_ahp*1.0e2_real64, ', window at x (cm)=', &
             max(0.0_real64, self%cfg%xl_pow)*1.0e2_real64
@@ -284,6 +292,20 @@ contains
         if (self%mpi_rank == 0) write(*,'(a)') 'RF antenna radius must be > 0 ' // &
           '(set yr_pow > ymax/2, or R_win for Planar), please correct ...'
         call stop_calculation
+      end if
+
+      if (self%cfg%flag_coil_ant == 1) then
+        ! Turns sit behind the window, outside the plasma (the loop field
+        ! is singular on the wire).
+        if (any(self%cfg%coil_x >= max(0.0_real64, self%cfg%xl_pow))) then
+          if (self%mpi_rank == 0) write(*,'(a)') 'Coil turns must lie behind the ' // &
+            'window (x < xl_pow) in input_dir/coil.inp, please correct ...'
+          call stop_calculation
+        end if
+        call self%coil%build(self%cfg%coil_a, self%cfg%coil_x, self%cfg%coil_w, &
+                             self%dom%h, self%dom%xmax, self%dom%ymax, self%dom%zmax)
+        call self%coil%self_check(self%mpi_rank)
+        call self%coil%write_table('./Output/coil_field.dat', self%mpi_rank)
       end if
 
       ! Round nsav to a multiple of the RF period - legacy Src/main.f90:666.
@@ -879,6 +901,9 @@ contains
           ! (measured ~76ms push + ~56ms BC as separate passes).
           use_boris = (self%cfg%flag_B == 1) .and. &
                       .not. (self%cfg%flag_B_pos == 1 .and. q_species > 0.0_real64)
+          ! RF mode 'Coil' adds B_RF to the push, so every species goes
+          ! through Boris (with B0 = 0 from the 1x1x1 dummy map if flag_B==0).
+          if (self%cfg%flag_coil_ant == 1) use_boris = .true.
 
           if (use_boris) then
             ! ptype==1 (electrons) is split out rather than always passing
@@ -1021,6 +1046,8 @@ contains
                     P_RF_local     = self%P_RF(ptype,iproc), &
                     flag_planar_ant = self%cfg%flag_planar_ant, &
                     x0             = x0_rf, &
+                    flag_coil_ant  = int(self%cfg%flag_coil_ant, int32), &
+                    coil           = self%coil, &
                     mom_loss_wall  = self%mom_loss(:,1,ptype,iproc), &
                     mom_loss_see   = self%mom_loss(:,4,1,iproc), &
                     mom_RF_local   = self%mom_RF(:,ptype,iproc), &
@@ -1075,6 +1102,8 @@ contains
                     P_RF_local     = self%P_RF(ptype,iproc), &
                     flag_planar_ant = self%cfg%flag_planar_ant, &
                     x0             = x0_rf, &
+                    flag_coil_ant  = int(self%cfg%flag_coil_ant, int32), &
+                    coil           = self%coil, &
                     mom_loss_wall  = self%mom_loss(:,1,ptype,iproc), &
                     mom_loss_see   = self%mom_loss(:,4,1,iproc), &
                     mom_RF_local   = self%mom_RF(:,ptype,iproc), &
@@ -1561,6 +1590,10 @@ contains
     real(real64)   :: xl_c, xr_c, yl_c, yr_c, zl_c, zr_c
     real(real64)   :: yp, zp, ymax_half, zmax_half
     real(real64)   :: np_avgRF, wp_rf, P_RFtot, P_RFtot_local
+    real(real64)   :: rin2, gams_calc, gams_min
+    ! Wrapped: under-relaxation of gams, as in update_heating_skin_depth
+    ! (gams sets the layer it averages over)
+    real(real64), parameter :: alpha = 0.3_real64
 
     ! Clamp the heating-region bounds to the domain box before turning them
     ! into grid indices - cfg%xl_pow etc. are user input and, by convention,
@@ -1602,6 +1635,13 @@ contains
     ! reduce_species_density) and the same cfg-derived loop bounds, so no
     ! MPI reduction is needed here - matches legacy, which also doesn't
     ! reduce cnt_RFcels.
+    ! Wrapped: only the previous skin layer R_ahp-gams <= r <= R_ahp, where
+    ! the field actually is (same definition as update_heating_skin_depth;
+    ! legacy averages the whole cross-section). Planar keeps the legacy
+    ! whole-disk average (its field decays axially, not radially).
+    rin2 = 0.0_real64
+    if (self%cfg%flag_planar_ant == 0_int32) &
+      rin2 = max(0.0_real64, self%cfg%R_ahp - self%gams)**2
     np_avgRF   = 0.0_real64
     cnt_RFcels = 0_int32
     !$omp parallel do collapse(2) private(iy,iz,ix,yp,zp) &
@@ -1610,7 +1650,8 @@ contains
       do iy = iyl, iyr
         yp = real(iy-1, real64)*self%dom%h(2)
         zp = real(iz-1, real64)*self%dom%h(3)
-        if (((yp-ymax_half)**2 + (zp-zmax_half)**2) <= self%cfg%R_ahp**2) then
+        if (((yp-ymax_half)**2 + (zp-zmax_half)**2) <= self%cfg%R_ahp**2 .and. &
+            ((yp-ymax_half)**2 + (zp-zmax_half)**2) >= rin2) then
           do ix = ixl, ixr
             np_avgRF   = np_avgRF + self%fld%np(ix,iy,iz,1)
             cnt_RFcels = cnt_RFcels + 1_int32
@@ -1627,7 +1668,14 @@ contains
     ! at init(), line ~135) - matches legacy Src/main.f90:910-912 exactly.
     wp_rf = sqrt( np_avgRF * self%chem%charge(1)**2 / &
                   ((eps0/self%cfg%k_eps0) * self%chem%mass(1)) )
-    self%gams = c / wp_rf
+    gams_calc = c / wp_rf
+    if (self%cfg%flag_planar_ant == 0_int32) then
+      gams_min  = 2.0_real64 * max(self%dom%h(2), self%dom%h(3))
+      self%gams = (1.0_real64 - alpha)*self%gams + alpha*gams_calc
+      self%gams = min(max(self%gams, gams_min), self%cfg%R_ahp)
+    else
+      self%gams = gams_calc
+    end if
 
     ! Reduce this period's absorbed power (accumulated by the mover into
     ! self%P_RF every step since the last call) across MPI ranks.
@@ -1655,11 +1703,12 @@ contains
 
     if (self%mpi_rank == 0) then
       write(*,'(1x,a,i0,a,es10.2,a,es10.2,a,es10.2,a,f6.2)') &
-        'it=', istep, ', E0(V/m)=', self%cfg%E0_RF, &
+        'it=', istep, merge(', I_coil(A)=', ', E0(V/m)=  ', self%cfg%flag_coil_ant == 1), &
+        self%cfg%E0_RF, &
         ', <P_RF>(W)=', P_RFtot, ', <np>(/m^3)=', np_avgRF, &
         ', skin depth gam(cm)=', self%gams*1.0e2_real64
     end if
-    call self%write_skin_depth_record(istep, np_avgRF, self%gams, self%gams, &
+    call self%write_skin_depth_record(istep, np_avgRF, gams_calc, self%gams, &
                                       self%cfg%E0_RF, P_RFtot)
 
     self%P_RF     = 0.0_real64
@@ -1687,8 +1736,8 @@ contains
     open(newunit=u, file='./Output/skin_depth.dat', status='unknown', &
          position='append', action='write')
     if (.not. file_exists) then
-      write(u,'(a)') '# Time(s), it, <ne>(m^-3) over the skin layer (heating) or heated ' // &
-          'volume (antenna), c/wp(cm), delta used(cm), E0_RF(V/m), P_RF(W)'
+      write(u,'(a)') '# Time(s), it, <ne>(m^-3) over the skin layer (Planar antenna: whole ' // &
+          'window disk), c/wp(cm), delta used(cm), E0_RF(V/m; Coil mode: coil current A), P_RF(W)'
     end if
     write(u,'(1x,es16.8,1x,i12,5(1x,es16.8))') self%params%dt*real(istep, real64), istep, &
         ne, delta_calc*1.0e2_real64, delta*1.0e2_real64, E0, P

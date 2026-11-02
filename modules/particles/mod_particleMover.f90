@@ -4,6 +4,7 @@ module mod_particleMover
   use mod_constants,   only: qe, pi
   use mod_rng,         only: ran2, load_gauss
   use mod_particleBC,  only: particle_is_lost, SeeParams
+  use mod_coilField,   only: CoilField
   implicit none
   private
 
@@ -191,6 +192,39 @@ contains
   end subroutine compute_rf_field
 
 
+  pure subroutine compute_coil_field(xp, yp, zp, time, ymax, zmax, gams, &
+                                      I_coil, omega_RF, x0, coil, &
+                                      EAy, EAz, EAth, theta, BRx, BRy, BRz)
+    ! RF mode 'Coil' (flag_coil_ant==1): E and B_RF of the real coil turns
+    ! from the precomputed (r,x) table - see mod_coilField.f90. Both come
+    ! from one potential A = I A_hat g(x) cos(wt), so Faraday's law holds:
+    ! E_theta = omega I A sin(wt), B_RF = I curl(A_hat g theta_hat) cos(wt).
+    ! Only called from move_and_bc_boris: coil mode always runs the Boris
+    ! push (mod_state.f90) since B_RF needs the rotation.
+    real(real64),    intent(in)  :: xp, yp, zp, time, ymax, zmax, gams
+    real(real64),    intent(in)  :: I_coil, omega_RF, x0
+    type(CoilField), intent(in)  :: coil
+    real(real64),    intent(out) :: EAy, EAz, EAth, theta, BRx, BRy, BRz
+    real(real64) :: rp, A, Br, Bx, cth, sth, cwt
+
+    rp    = sqrt((yp-ymax/2.0_real64)**2 + (zp-zmax/2.0_real64)**2)
+    theta = atan2(zp-zmax/2.0_real64, yp-ymax/2.0_real64)
+    if (theta < 0.0_real64) theta = theta + 2.0_real64*pi
+    cth = cos(theta)
+    sth = sin(theta)
+
+    call coil%eval(xp, rp, x0, gams, A, Br, Bx)
+
+    cwt  = I_coil*cos(omega_RF*time)
+    EAth = omega_RF*I_coil*A*sin(omega_RF*time)
+    EAy  = -EAth*sth
+    EAz  =  EAth*cth
+    BRx  = Bx*cwt
+    BRy  = Br*cwt*cth
+    BRz  = Br*cwt*sth
+  end subroutine compute_coil_field
+
+
   subroutine move_and_bc_electrostatic( part, n, h, E, q, m, dt, &
                                          use_energy_conserving, &
                                          bcnd, wall_cell, xmax, ymax, zmax, flag_pbc, flag_nmn, &
@@ -231,7 +265,7 @@ contains
     real(real64),       intent(in)    :: qmacro
     real(real64),       intent(inout) :: sum_q_xz_local(0:n(1)+2,0:n(3)+2)
     real(real64),       intent(inout) :: sum_q_yz_local(2,0:n(2)+2,0:n(3)+2)
-    real(real64),       intent(inout) :: p_mac_boundary(:,:)
+    real(real64),       intent(inout) :: p_mac_boundary(:,0:)
     real(real64),       intent(inout) :: P_loss_wall
     real(real64),       intent(in)    :: Nm_species
     type(SeeParams),    intent(in)    :: see
@@ -653,7 +687,7 @@ contains
     real(real64),       intent(in)    :: qmacro
     real(real64),       intent(inout) :: sum_q_xz_local(0:n(1)+2,0:n(3)+2)
     real(real64),       intent(inout) :: sum_q_yz_local(2,0:n(2)+2,0:n(3)+2)
-    real(real64),       intent(inout) :: p_mac_boundary(:,:)
+    real(real64),       intent(inout) :: p_mac_boundary(:,0:)
     real(real64),       intent(inout) :: P_loss_wall
     real(real64),       intent(in)    :: Nm_species
     type(SeeParams),    intent(in)    :: see
@@ -982,7 +1016,7 @@ contains
                                  iseed, P_loss_see, &
                                  flag_RFant, ixl_pow, ixr_pow, R_ahp, gams, &
                                  E0_RF, omega_RF, time, P_RF_local, &
-                                 flag_planar_ant, x0, &
+                                 flag_planar_ant, x0, flag_coil_ant, coil, &
                                  mom_loss_wall, mom_loss_see, mom_RF_local, &
                                  P_loss_coll, mom_loss_coll, &
                                  n_boris_used, n_boris_total )
@@ -1011,7 +1045,7 @@ contains
     real(real64),       intent(in)    :: qmacro
     real(real64),       intent(inout) :: sum_q_xz_local(0:n(1)+2,0:n(3)+2)
     real(real64),       intent(inout) :: sum_q_yz_local(2,0:n(2)+2,0:n(3)+2)
-    real(real64),       intent(inout) :: p_mac_boundary(:,:)
+    real(real64),       intent(inout) :: p_mac_boundary(:,0:)
     real(real64),       intent(inout) :: P_loss_wall
     real(real64),       intent(in)    :: Nm_species
     type(SeeParams),    intent(in)    :: see
@@ -1025,6 +1059,10 @@ contains
     real(real64),       intent(inout) :: P_RF_local
     integer(int32),     intent(in)    :: flag_planar_ant
     real(real64),       intent(in)    :: x0
+    ! RF mode 'Coil': field table of the real turns, E0_RF = coil current
+    ! (A) - see compute_coil_field above.
+    integer(int32),     intent(in)    :: flag_coil_ant
+    type(CoilField),    intent(in)    :: coil
     ! Momentum-conservation diagnostic - see move_and_bc_electrostatic's
     ! header comment.
     real(real64),       intent(inout) :: mom_loss_wall(3)
@@ -1080,6 +1118,7 @@ contains
 
     logical      :: in_rf_region
     real(real64) :: EAy, EAz, EAth, theta_rf, v_theta
+    real(real64) :: BRx, BRy, BRz
 
     logical :: has_w, has_sp, has_flag_dead, has_flag_cex
 
@@ -1186,9 +1225,15 @@ contains
       if (flag_RFant == 1_int32) then
         if (ix >= ixl_pow .and. ix <= ixr_pow) then
           in_rf_region = .true.
-          call compute_rf_field(xp, yp, zp, time, ymax, zmax, R_ahp, gams, &
-                                 E0_RF, omega_RF, flag_planar_ant, x0, &
-                                 EAy, EAz, EAth, theta_rf)
+          if (flag_coil_ant == 1_int32) then
+            call compute_coil_field(xp, yp, zp, time, ymax, zmax, gams, &
+                                     E0_RF, omega_RF, x0, coil, &
+                                     EAy, EAz, EAth, theta_rf, BRx, BRy, BRz)
+          else
+            call compute_rf_field(xp, yp, zp, time, ymax, zmax, R_ahp, gams, &
+                                   E0_RF, omega_RF, flag_planar_ant, x0, &
+                                   EAy, EAz, EAth, theta_rf)
+          end if
           Eyp = Eyp + EAy
           Ezp = Ezp + EAz
         end if
@@ -1283,6 +1328,21 @@ contains
 
       end if
 
+      ! RF mode 'Coil': add B_RF to the static field, B0 + B_RF in the
+      ! rotation. Where B0 was negligible (do_boris false) B_RF alone is
+      ! still rotated.
+      if (in_rf_region .and. flag_coil_ant == 1_int32) then
+        if (.not. do_boris) then
+          Bpx = 0.0_real64
+          Bpy = 0.0_real64
+          Bpz = 0.0_real64
+          do_boris = .true.
+        end if
+        Bpx = Bpx + BRx
+        Bpy = Bpy + BRy
+        Bpz = Bpz + BRz
+      end if
+
       n_boris_total = n_boris_total + 1_int32
       if (do_boris) n_boris_used = n_boris_used + 1_int32
 
@@ -1343,6 +1403,7 @@ contains
         ! needed the way the power term above needs v_theta, since impulse
         ! is linear in E). No x-component: the prescribed RF field only has
         ! azimuthal (y,z) components (EAy,EAz above).
+        ! Coil mode: the q v x B_RF impulse is not included here.
         mom_RF_local(2) = mom_RF_local(2) + Nm_species*q*EAy*dt
         mom_RF_local(3) = mom_RF_local(3) + Nm_species*q*EAz*dt
       end if
@@ -1582,7 +1643,7 @@ contains
     real(real64),       intent(in)    :: qmacro
     real(real64),       intent(inout) :: sum_q_xz_local(0:n(1)+2,0:n(3)+2)
     real(real64),       intent(inout) :: sum_q_yz_local(2,0:n(2)+2,0:n(3)+2)
-    real(real64),       intent(inout) :: p_mac_boundary(:,:)
+    real(real64),       intent(inout) :: p_mac_boundary(:,0:)
     real(real64),       intent(inout) :: P_loss_wall
     real(real64),       intent(in)    :: Nm_species
     type(SeeParams),    intent(in)    :: see
