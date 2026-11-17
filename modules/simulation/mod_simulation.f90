@@ -96,6 +96,15 @@ module mod_simulation
     ! valid backup - the other directory still has the previous one).
     integer(int32) :: flag_wrt = 0_int32
 
+    ! Global electron stability quantities for Output/stability.dat,
+    ! MPI-reduced in print_diagnostics(istep) and written by
+    ! output_step(istep) of the same step (which adds the plane-based
+    ! lambda_De minimum - plane moments are only fresh there, see the
+    ! phi_Te_ne_cntr.dat comment in output_step).
+    real(real64) :: stab_ne_max = 0.0_real64  ! max grid n_e (m^-3)
+    real(real64) :: stab_Te     = 0.0_real64  ! global electron T (eV)
+    real(real64) :: stab_vmax   = 0.0_real64  ! max electron |v| (m/s)
+
   contains
     procedure :: init
     procedure :: build_initial_fields
@@ -656,6 +665,65 @@ contains
       close(ucntr)
     end block
 
+    ! --- stability.dat: electron plasma frequency, Debye length and
+    ! particle Courant numbers. Global columns use the MPI-reduced values
+    ! print_diagnostics(istep) stored just before this step; lambda_De,min
+    ! (global) pairs the max grid n_e with the global T_e, so it is an
+    ! estimate. The plane column is the exact minimum over the three plot
+    ! planes, from the interval-averaged grid n_e (np_avg, m^-3) and T_e
+    ! (data_pavg index 2) - the same pair as the n1/T1 .mco files, not the
+    ! legacy dr_*.mco pair. h/lambda and the Courant numbers use max(h)
+    ! and min(h) respectively (the worst direction for each).
+    block
+      integer :: ustab
+      logical :: file_exists
+      real(real64) :: hmin, hmax, wpe, lam_glob, lam_pl, vth, lam_floor
+
+      hmin = minval(self%state%dom%h)
+      hmax = maxval(self%state%dom%h)
+      wpe  = 0.0_real64
+      if (self%state%chem%mass(1) > 0.0_real64) &
+        wpe = sqrt(self%stab_ne_max * qe**2 / (eps0 * self%state%chem%mass(1)))
+      lam_glob = 0.0_real64
+      if (self%stab_ne_max > 0.0_real64) &
+        lam_glob = sqrt(eps0 * self%stab_Te / (qe * self%stab_ne_max))
+      vth = 0.0_real64
+      if (self%state%chem%mass(1) > 0.0_real64) &
+        vth = sqrt(qe * self%stab_Te / self%state%chem%mass(1))
+
+      ! T/n per plane node, both summed over cnt_avg so the avg_factor's
+      ! cancel. huge() marks nodes without both n_e>0 and T_e>0 (and, if
+      ! it survives the min, is written as lambda=0 below).
+      tmp_xy = huge(1.0_real64)
+      tmp_xz = huge(1.0_real64)
+      tmp_yz = huge(1.0_real64)
+      where (self%state%np_avg_xy(:,:,1) > 0.0_real64 .and. self%state%data_pavg_xy(2,:,:,1) > 0.0_real64) &
+        tmp_xy = self%state%data_pavg_xy(2,:,:,1) / self%state%np_avg_xy(:,:,1)
+      where (self%state%np_avg_xz(:,:,1) > 0.0_real64 .and. self%state%data_pavg_xz(2,:,:,1) > 0.0_real64) &
+        tmp_xz = self%state%data_pavg_xz(2,:,:,1) / self%state%np_avg_xz(:,:,1)
+      where (self%state%np_avg_yz(:,:,1) > 0.0_real64 .and. self%state%data_pavg_yz(2,:,:,1) > 0.0_real64) &
+        tmp_yz = self%state%data_pavg_yz(2,:,:,1) / self%state%np_avg_yz(:,:,1)
+      lam_floor = min(minval(tmp_xy), minval(tmp_xz), minval(tmp_yz))
+      lam_pl = 0.0_real64
+      if (lam_floor < huge(1.0_real64)) lam_pl = sqrt(eps0 * lam_floor / qe)
+
+      inquire(file='./Output/stability.dat', exist=file_exists)
+      open(newunit=ustab, file='./Output/stability.dat', status='unknown', &
+           position='append', action='write')
+      if (.not. file_exists) then
+        write(ustab,'(a)') '# Time (s), n_e,max (m^-3), T_e (eV), omega_pe,max (rad/s), omega_pe*dt, '// &
+            'lambda_De,min global (m), max(h)/lambda_De global, lambda_De,min planes (m), '// &
+            'max(h)/lambda_De planes, v_max (m/s), CFL_max = v_max*dt/min(h), CFL_th = v_th*dt/min(h)'
+      end if
+      write(ustab,'(20(1x,es16.8))') self%state%params%dt * real(istep, real64), &
+          self%stab_ne_max, self%stab_Te, wpe, wpe * self%state%params%dt, &
+          lam_glob, merge(hmax / lam_glob, 0.0_real64, lam_glob > 0.0_real64), &
+          lam_pl,   merge(hmax / lam_pl,   0.0_real64, lam_pl   > 0.0_real64), &
+          self%stab_vmax, self%stab_vmax * self%state%params%dt / hmin, &
+          vth * self%state%params%dt / hmin
+      close(ustab)
+    end block
+
     if (DEBUG_SIMULATION) then
       write(*,*) "MOD output_step: istep, cnt_avg = ", istep, self%state%cnt_avg
     end if
@@ -1052,6 +1120,7 @@ contains
       call reset_output_file('./Output/Mtot.dat')
       call reset_output_file('./Output/phi_Te_ne_cntr.dat')
       call reset_output_file('./Output/skin_depth.dat')
+      call reset_output_file('./Output/stability.dat')
       do ptype = 1_int32, self%state%ntype
         write(pnum,'(i0)') ptype
         call reset_output_file('./Output/Iw'//trim(pnum)//'.dat')
@@ -1223,6 +1292,49 @@ contains
                           size(p_mac_global, kind=int32), &
                           MPI_DOUBLE_PRECISION, MPI_SUM, self%state%comm, ierr)
     end if
+
+    ! --- stability.dat inputs (species 1 = electrons): max grid n_e, global
+    ! electron temperature from the particles' velocity variance, and max
+    ! |v|. sync_np is collective, but every rank reaches print_diagnostics.
+    call self%state%sync_np()
+    self%stab_ne_max = maxval(self%state%fld%np(1:self%state%dom%n(1)+1, &
+                                                 1:self%state%dom%n(2)+1, &
+                                                 1:self%state%dom%n(3)+1, 1))
+    block
+      real(real64) :: raw_stab(5), v2, u2
+      raw_stab = 0.0_real64    ! (1)=count, (2:4)=sum v, (5)=sum |v|^2
+      self%stab_vmax = 0.0_real64
+      if (self%state%chem%mass(1) > 0.0_real64) then
+        do iproc_m = 1_int32, self%state%nproc
+          if (.not. allocated(self%state%part(1,iproc_m)%pv)) cycle
+          do ip_m = 1_int32, self%state%part(1,iproc_m)%n
+            if (allocated(self%state%part(1,iproc_m)%flag_dead)) then
+              if (self%state%part(1,iproc_m)%flag_dead(ip_m) /= 0_int8) cycle
+            end if
+            v2 = sum(self%state%part(1,iproc_m)%pv(4:6,ip_m)**2)
+            raw_stab(1)   = raw_stab(1) + 1.0_real64
+            raw_stab(2:4) = raw_stab(2:4) + self%state%part(1,iproc_m)%pv(4:6,ip_m)
+            raw_stab(5)   = raw_stab(5) + v2
+            self%stab_vmax = max(self%stab_vmax, v2)
+          end do
+        end do
+      end if
+      self%stab_vmax = sqrt(self%stab_vmax)
+
+      if (self%state%mpi_size > 1_int32) then
+        call MPI_Allreduce(MPI_IN_PLACE, raw_stab, 5_int32, &
+                            MPI_DOUBLE_PRECISION, MPI_SUM, self%state%comm, ierr)
+        call MPI_Allreduce(MPI_IN_PLACE, self%stab_vmax, 1_int32, &
+                            MPI_DOUBLE_PRECISION, MPI_MAX, self%state%comm, ierr)
+      end if
+
+      self%stab_Te = 0.0_real64
+      if (raw_stab(1) > 0.0_real64) then
+        u2 = sum((raw_stab(2:4) / raw_stab(1))**2)
+        self%stab_Te = self%state%chem%mass(1) * &
+            max(0.0_real64, raw_stab(5) / raw_stab(1) - u2) / (3.0_real64 * qe)
+      end if
+    end block
 
     ! Same normalization Iw1/Iw2 already apply to raw(5)/raw(6) below -
     ! p_mac is already in physical (current/power) units at accumulation

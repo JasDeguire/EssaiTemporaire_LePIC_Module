@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LePIC+ GUI</title>
+<style>
+  :root {
+    --bg: #f6f6f2; --panel: #ffffff; --ink: #1d1d1b; --muted: #666; --line: #d8d8d0;
+    --accent: #1f5f99; --err: #b00020; --warn: #b36b00; --info: #1f5f99; --errbg: #ffe3e3; --warnbg: #fff3d0;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; background: var(--bg); color: var(--ink); }
+  header { display: flex; align-items: center; gap: 4px; padding: 6px 12px; background: #23303d; color: #fff; }
+  header h1 { font-size: 15px; margin: 0 18px 0 0; font-weight: 600; }
+  header button.page { background: none; border: 0; color: #c9d3dd; padding: 6px 12px; cursor: pointer; font-size: 14px; border-radius: 4px; }
+  header button.page.on { background: #3b4c5e; color: #fff; }
+  .page-body { display: none; padding: 10px 12px; }
+  .page-body.on { display: block; }
+  .bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 8px; }
+  .bar .sep { width: 1px; height: 22px; background: var(--line); margin: 0 6px; }
+  button { font: inherit; padding: 4px 10px; border: 1px solid #b9b9b0; background: #fff; border-radius: 4px; cursor: pointer; }
+  button:hover { background: #eef2f6; }
+  button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  select, input[type=text], input[type=number] { font: inherit; padding: 3px 5px; border: 1px solid #b9b9b0; border-radius: 3px; background: #fff; }
+  input.err { background: var(--errbg); } input.warn { background: var(--warnbg); }
+  .tabs { display: flex; flex-wrap: wrap; gap: 2px; border-bottom: 1px solid var(--line); }
+  .tabs button { border: 1px solid var(--line); border-bottom: 0; border-radius: 4px 4px 0 0; background: #ecece6; }
+  .tabs button.on { background: var(--panel); font-weight: 600; }
+  .tabs .cnt { color: var(--err); margin-left: 4px; font-weight: 600; }
+  .tabpane { background: var(--panel); border: 1px solid var(--line); border-top: 0; padding: 8px 10px; min-height: 300px; max-height: calc(100vh - 290px); overflow: auto; }
+  fieldset { border: 1px solid var(--line); border-radius: 4px; margin: 6px 0 10px; padding: 4px 10px 8px; }
+  legend { font-weight: 600; padding: 0 4px; }
+  .desc { color: var(--muted); margin: 2px 0 6px; }
+  table.form { border-collapse: collapse; }
+  table.form td { padding: 2px 6px; vertical-align: middle; }
+  table.form td.lab { min-width: 260px; }
+  td.unit, .note { color: var(--muted); }
+  td.mark { width: 18px; font-weight: 700; }
+  .lv-fatal, .lv-error { color: var(--err); } .lv-warning { color: var(--warn); } .lv-info { color: var(--info); }
+  #help { background: #fbfbf5; border: 1px solid var(--line); border-radius: 4px; margin-top: 8px; padding: 6px 10px; height: 120px; overflow: auto; }
+  #help .t { font-weight: 600; font-size: 15px; } #help .code { color: var(--muted); font-family: ui-monospace, monospace; margin-left: 10px; }
+  #status { margin-top: 6px; color: var(--muted); }
+  #status.bad { color: var(--err); }
+  pre.derived { background: #f4f6f8; padding: 8px; border-radius: 4px; overflow: auto; }
+  table.issues { border-collapse: collapse; width: 100%; }
+  table.issues td { border-bottom: 1px solid #eee; padding: 3px 6px; vertical-align: top; }
+  table.issues tr:hover { background: #f2f6fa; cursor: pointer; }
+  table.segs { border-collapse: collapse; margin: 4px 0; }
+  table.segs th, table.segs td { border: 1px solid var(--line); padding: 2px 6px; text-align: left; }
+  table.segs tr.sel { background: #dbe9f6; } table.segs tbody tr { cursor: pointer; }
+  table.segs tr.e { background: var(--errbg); } table.segs tr.w { background: var(--warnbg); }
+  .geo { display: grid; grid-template-columns: minmax(420px, 560px) 1fr; gap: 12px; }
+  .viewer { display: grid; grid-template-columns: 320px 1fr; gap: 10px; }
+  .tree { background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: 6px; max-height: calc(100vh - 150px); overflow: auto; }
+  .tree .g { font-weight: 600; margin-top: 6px; }
+  .tree .it { padding: 1px 6px 1px 14px; cursor: pointer; border-radius: 3px; }
+  .tree .it:hover { background: #eef2f6; } .tree .it.on { background: #cfe0f1; }
+  .plotbox { background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: 6px; }
+  .plotbox img { max-width: 100%; display: block; }
+  .readout { font-family: ui-monospace, monospace; color: #333; min-height: 1.4em; }
+  .ctl { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; margin-bottom: 6px; }
+  .modal { position: fixed; inset: 0; background: rgba(0,0,0,.35); display: none; align-items: center; justify-content: center; }
+  .modal.on { display: flex; }
+  .modal .box { background: #fff; width: min(1000px, 92vw); max-height: 82vh; overflow: auto; padding: 10px 14px; border-radius: 6px; }
+  .modal pre { font-size: 12px; } .add { color: #0a7a2f; background: #e8f7ec; } .del { color: #a01020; background: #fbeaec; }
+  .muted { color: var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <h1>LePIC+</h1>
+  <button class="page on" data-page="inputs">Inputs</button>
+  <button class="page" data-page="out2d">Output 2D</button>
+  <button class="page" data-page="out3d">Output 3D</button>
+</header>
+
+<!-- ============================== INPUTS ============================== -->
+<section class="page-body on" id="page-inputs">
+  <div class="bar">
+    <label>Case <select id="case"></select></label>
+    <span class="sep"></span>
+    <button class="primary" id="btn-save">Save</button>
+    <button id="btn-diff">Review changes…</button>
+    <button id="btn-reload">Reload from disk</button>
+    <span class="sep"></span>
+    <button id="btn-activate" title="LePIC+ only reads the files directly in input_dir/">Copy to input_dir/ (run this case)</button>
+    <span class="muted" id="folder"></span>
+  </div>
+  <div class="tabs" id="tabs"></div>
+  <div class="tabpane" id="tabpane"></div>
+  <div id="help"></div>
+  <div id="status"></div>
+</section>
+
+<!-- ============================== OUTPUT 2D ============================== -->
+<section class="page-body" id="page-out2d">
+  <div class="bar">
+    <label>Folder <input type="text" id="o-dir" value="Output" size="22"></label>
+    <button id="o-open">Open</button>
+    <label>Snapshot <select id="o-snap"></select></label>
+    <span id="o-planes">Plane
+      <label><input type="radio" name="o-plane" value="xy" checked> xy</label>
+      <label><input type="radio" name="o-plane" value="xz"> xz</label>
+      <label><input type="radio" name="o-plane" value="yz"> yz</label>
+    </span>
+    <span class="sep"></span>
+    <label><input type="checkbox" id="o-auto" checked> Auto-update every</label>
+    <input type="number" id="o-int" value="60" min="5" style="width:60px"> s
+    <button id="o-reload">Reload now</button>
+  </div>
+  <div class="viewer">
+    <div class="tree" id="o-tree"></div>
+    <div class="plotbox">
+      <div class="ctl" id="o-ctl">
+        <label>View <select id="o-mode">
+          <option value="map">2D map</option><option value="profx">Profile along horizontal axis (middle)</option>
+          <option value="profy">Profile along vertical axis (middle)</option></select></label>
+        <label>Colormap <select id="o-cmap"></select></label>
+        <label><input type="checkbox" id="o-log"> log scale</label>
+        <label>min <input type="text" id="o-vmin" size="7"></label>
+        <label>max <input type="text" id="o-vmax" size="7"></label>
+        <label><input type="checkbox" id="o-stream" checked> streamlines</label>
+        <span id="o-probe-box">x position <input type="range" id="o-probe" min="0" max="8" value="0"></span>
+        <span id="o-cols"></span>
+      </div>
+      <img id="o-img" alt="">
+      <div class="readout" id="o-read"></div>
+      <div class="muted" id="o-status"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================== OUTPUT 3D ============================== -->
+<section class="page-body" id="page-out3d">
+  <div class="bar">
+    <label>File <input type="text" id="t-file" value="Output/phi_n_3D.dat" size="30"></label>
+    <button id="t-open">Open</button>
+    <label>Quantity <select id="t-qty">
+      <option value="phi">phi (potential)</option><option value="dens">n (density)</option>
+      <option value="Ex">Ex (from phi)</option><option value="Ey">Ey (from phi)</option><option value="Ez">Ez (from phi)</option></select></label>
+    <span>Slice normal
+      <label><input type="radio" name="t-axis" value="z" checked> z (xy)</label>
+      <label><input type="radio" name="t-axis" value="y"> y (xz)</label>
+      <label><input type="radio" name="t-axis" value="x"> x (yz)</label></span>
+    <label>node <input type="range" id="t-idx" min="0" max="10" value="5"></label>
+    <label>Colormap <select id="t-cmap"></select></label>
+    <label><input type="checkbox" id="t-log"> log (density)</label>
+  </div>
+  <div class="plotbox">
+    <img id="t-img" alt="">
+    <div class="readout" id="t-read"></div>
+    <div class="muted" id="t-status">The cell size comes from input_dir/geometry.inp next to Output/: it must be the case that wrote the file.</div>
+  </div>
+</section>
+
+<div class="modal" id="modal"><div class="box"><div style="text-align:right"><button id="modal-close">Close</button></div><div id="modal-body"></div></div></div>
+<script src="app.js"></script>
+</body>
+</html>
