@@ -1,0 +1,60 @@
+IONS
+name   mass  charge  temp.(eV)  n/n0
+-------------------------------------
+[H+]     1.     1.     0.1      1.
+-------------------------------------
+
+NEUTRALS
+name   mass  charge  temp.(eV)  n/n0
+-------------------------------------
+[H]     1.d0     0.     0.1      1.
+-------------------------------------
+
+EACTION
+[e]+[H]->[e]+[H]
+0.    0.  
+1.    1.
+COLLISION
+Note that the code reads in order:
+(1) Eth   dE
+(2) scale scale
+(3) type of inelastic collision
+Eth= threshold energy of reaction
+dE= energy gained by heavy byproduct particles
+scale= multiplicative factor for columns
+Byproduct electrons share the remaining incident electron energy 
+NOTES:
+E(eV)    sigma(m-2)
+---------------------------
+  0.0000E+00  1.0000E-19
+  0.1000E+01  1.0000E-19
+  0.1000E+03  1.0000E-19
+  0.1010E+03  0.0000E-00
+  0.1000E+07  0.0000E-00
+---------------------------
+
+EACTION
+[e]+[H]->[e]+[H+]+[e]
+15.8  0.  
+1.    1.
+IONIZATION
+Note that the code reads in order:
+(1) Eth   dE
+(2) scale scale
+(3) type of inelastic collision
+Eth= threshold energy of reaction
+dE= energy gained by heavy byproduct particles
+scale= multiplicative factor for columns
+Byproduct electrons share the remaining incident electron energy 
+NOTES:
+E(eV)    sigma(m-2)
+---------------------------
+  0.0000E+00  0.0000E+00
+  0.1580E+02  0.0000E+00
+  0.1590E+02  1.0000E-20
+  0.1000E+03  1.0000E-20
+  0.1010E+03  0.0000E-00
+  0.1000E+07  0.0000E-00
+---------------------------
+
+ENDFILE

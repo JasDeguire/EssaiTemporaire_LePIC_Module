@@ -1,0 +1,28 @@
+argon.dat 500000 ! name of file storing reactions, # of time steps (~30 us at dt ~6.1e-11 s; ion transit R/u_B ~ 20 us)
+3. ! Te (eV)
+5 ! # of levels in MG solver
+1.d-8, 1.6d0 ! Min. precision in residual, w for SOR [1.6]
+80 80 80 ! Number of grid points nx ny nz (h ~ 1.25 mm ~ 22 lambda_D at 5e16 m-3, 3 eV: needs EC-PIC, see push scheme)
+0. 10. 0.2 10.2 0.2 10.2 ! Particle heating region x<, x>, y<, y>, z<, z> [cm] - whole cylinder; R = yr - ymax/2 = 5 cm
+10. ! Particle loading region [cm]
+0 ! # of magnetic field files (<0 positive ions not magnetized)
+1 1 1 ! Grid for the magnetic field map
+5. 1.d8 -2.4 ! Pabs(W) (<0 to turn off), Heating frequency (<0 == off), skin depth delta(cm) (0: uniform, <0: recomputed every 1/f0 from c/wp in the skin layer, |delta| = initial guess): heating weight exp((r-R)/delta)
+-1.d0 2 ! Inject current I(A) (<0 == off), options [1=fixed, 2= equal to ion losses, 3= e-beam (+Z), 4= emmissive cath. (+Z), <0 cosine]
+1.d-3 ! t_max(s)
+0.05 ! time coeff. k ; dt= k*dx/vt (dt ~ 6.1e-11 s, wp*dt ~ 0.77 at 5e16)
+5.d16 ! n0 (m-3) (c/wp ~ 2.4 cm < R = 5 cm)
+2.4d20 ! ng (m-3) (Ar, 1 Pa at 300 K)
+20 ! np_cell: number of particles per cell (<0 for no background plasma)
+2 ! Number of wall labels, [ngrid+1:ngrid+2] is used for dielectric BC's (<0 do not save 3D density and potential maps)
+5000 ! frequency for saving data (<0 does not reset averaging)
+20000 -100 20.d-6 30.d-6 Z ! Frequency for simulation backup (<0 no averaging), # of plots (<0 off), time window [t1,t2], saved planes
+1.d0 ! k_eps0 (<0 iterative P, I_inj or Vgrd) - no eps0 scaling
+no 1 0. 8. 0. 12. 1 0. 10. ! Save pdf (y/n), ptype, yl, yr, zl, zr (cm), # of regions n_rg, xl & xr for each n_rg
+no 24 8 1. ! Restart (yes/no/external/gauss),  # of OMP threads, # of MPI, coefficient for particle duplication/removal
+no 0.8 0.8 1 2 2 ! Holes (y/n), Lhy*Lhz(cm), ny*nz holes, (PE) grid index
+0. 10. 2 1.d-6 ! jH-(mA/cm2) from H on PE surface, TH-(eV), characteristics of neg. ions on grid # [index], dielectric capacitance Ca/S (Fd/m2)
+-0.18 2 No 0. 1.d8 0. 0. ! Secondary emission coeff (<0 == off), grid index, RF mode (No/Electrode/Wrapped/Planar), phi0(V), f0(Hz) (also the skin-depth update period 1/f0), phi1(V), f1(Hz), E0_RF(V/m, initial guess) [, R_win(cm): Planar window radius]
+no  ! Coulomb collisions (no/yes)
+energy ! Push scheme (momentum/energy) - EC-PIC (Powis & Kaganovich 2024) if 'energy'
+END

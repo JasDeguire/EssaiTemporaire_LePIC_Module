@@ -15,7 +15,7 @@ s thr 1. 100. By 1. 1.03 0. 0. ! ext. file (y/n/s), name, scaling, B(G), directi
 0.3  ! time coeff. k ; dt= k*dx/vt
 2.5d14 ! n0 (m-3)
 1.d20 ! ng (m-3)
-50 ! np_cell: number of particles per cell (<0 for no background plasma)
+100 ! np_cell: number of particles per cell (<0 for no background plasma)
 2 ! Number of wall labels, [ngrid+1:ngrid+2] is used for dielectric BC's (<0 do not save 3D density and potential maps)
 1000 ! frequency for saving data (<0 does not reset averaging)
 2000 -100 50.d-6 100.e-6 Y ! Frequency for simulation backup (<0 no averaging), # of plots (<0 off), time window [t1,t2], saved planes
@@ -24,6 +24,8 @@ no 1 0. 5. 0. 5. 1 0. 10. ! Save pdf (y/n), ptype, yl, yr, zl, zr (cm), # of reg
 no 24 2 1. ! Restart (yes/no/external/gauss),  # of OMP threads, # of MPI, coefficient for particle duplication/removal
 no 0.8 0.8 1 2 2 ! Holes (y/n), Lhy*Lhz(cm), ny*nz holes, (PE) grid index
 0. 10. 3 1.d-6 ! jH-(mA/cm2) from H on PE surface, TH-(eV), characteristics of neg. ions on grid # [index], dielectric capacitance Ca/S (Fd/m2)
--0.18 2 no 0. 0.2 0.6 0.8 ! Secondary emission coeff (<0 == off), grid index
+-0.18 2 no 0. 0.2 0.6 0.8 0. ! Secondary emission coeff (<0 == off), grid index
+no  ! Coulomb collisions (no/yes)
+momentum ! Push scheme (momentum/energy) - EC-PIC (Powis & Kaganovich 2024) if 'energy'
 END
 

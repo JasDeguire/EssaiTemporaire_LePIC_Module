@@ -20,14 +20,27 @@ module mod_domain
 
     integer :: flag_pbc  = 0
     integer :: flag_pbcz = 0
+
+    integer :: n_cath  = 0  ! number of emissive cathodes (opt_inj=4)
+    integer :: dir_sec = 1  ! direction of current emissive cathode (+1 or -1)
     integer :: flag_nmn  = 0
     integer :: flag_die  = 0
+
+    ! z-positions of secondary-emission cathodes (set by build_boundary)
+    real(real64) :: zg_sec(2) = 0.0_real64
 
     ! wall material types per label (0:ngrid). Allocated in build_boundary.
     integer, allocatable :: dtype(:)
 
     ! core arrays (legacy layout: ghosted 0:n+2)
     integer(int32), allocatable :: bcnd(:,:,:)
+
+    ! precomputed cache: wall_cell(ix,iy,iz) == (all 8 corners of bcnd around
+    ! (ix,iy,iz) are >= 1), i.e. the exact predicate particle_is_lost computes.
+    ! bcnd is static after generate_boundary() fills it, so this is computed
+    ! once (see mod_boundary.f90::build_boundary) instead of recomputed via an
+    ! 8-corner gather on every particle, every step.
+    logical(1), allocatable :: wall_cell(:,:,:)
 
   contains
     procedure :: init_from_config

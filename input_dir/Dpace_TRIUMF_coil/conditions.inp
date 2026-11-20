@@ -1,0 +1,28 @@
+hydrogen2.dat 200000 ! name of file storing reactions, # of time steps
+10. ! Te (eV)
+5 ! # of levels in MG solver
+1.d-7, 1.6d0 ! Min. precision in residual, w for SOR [1.6]
+256 160 160 ! n: nx=2**n, ny=2**n. Number of grid points [2**7,2**3]
+0. 16. 0. 10. 0. 10. ! RF region x<, x>, y<, y>, z<, z> [cm] - whole chamber (DPace_TRIUMF heated 0-1.5 cm; the coil field is only applied for xl_pow<=x<=xr_pow, so 1.5 cm would cut it at ~2 skin depths). Window at x=xl_pow=0 (back plate)
+16. ! Particle loading region [cm]
+0 ! # of magnetic field files (<0 positive ions not magnetized) - DPace_TRIUMF's B_field_B*.dat filter maps are missing, filter off
+1 1 1 ! Grid for the magnetic field map
+800. 1.d8 0. ! Pabs(W) = target RF power (coil current I rescaled toward it every RF period) - 800 W as DPace_TRIUMF, Heating frequency (unused: the antenna turns Maxwellian heating off), skin depth delta(cm) (unused with the antenna)
+-1.d0 2 ! Inject current I(A) (<0 == off), options [1=fixed, 2= equal to ion losses, 3= e-beam (+Z), 4= emmissive cath. (+Z), <0 cosine]
+1.d-3 ! t_max(s)
+0.3  ! time coeff. k ; dt= k*dx/vt
+4.d17 ! n0 (m-3) (c/wp ~ 0.84 cm)
+5.d20 ! ng (m-3)
+20 ! np_cell: number of particles per cell (<0 for no background plasma)
+5 ! Number of wall labels, [ngrid+1:ngrid+2] is used for dielectric BC's (<0 do not save 3D density and potential maps)
+1000 ! frequency for saving data (<0 does not reset averaging)
+2000 -100 50.d-6 100.e-6 Y ! Frequency for simulation backup (<0 no averaging), # of plots (<0 off), time window [t1,t2], saved planes
+2000.d0 ! k_eps0 (<0 iterative P, I_inj or Vgrd)
+no 1 0. 10. 0. 10. 1 0. 16. ! Save pdf (y/n), ptype, yl, yr, zl, zr (cm), # of regions n_rg, xl & xr for each n_rg
+no 24 8 1 ! Restart (yes/no/external/gauss),  # of OMP threads, # of MPI, coefficient for particle duplication/removal
+no 1. 1. 1 1 2 ! Holes (y/n), Lhy*Lhz(cm), ny*nz holes, (PE) grid index
+0. 10. 3 1.d-6 ! jH-(mA/cm2) from H on PE surface, TH-(eV), characteristics of neg. ions on grid # [index], dielectric capacitance Ca/S (Fd/m2)
+-0.18 2 Coil 0. 13.56d6 0. 0. 10. 4. ! Secondary emission coeff (<0 == off), grid index, RF mode (No/Electrode/Wrapped/Planar/Coil), phi0(V), f0(Hz), phi1(V), f1(Hz), coil current I(A, initial guess), R_win(cm): disk for the <ne> that sets delta; turns in coil.inp (3 turns a=1.2/2.4/3.6 cm at x=-0.5 cm)
+yes  ! Coulomb collisions (no/yes)
+energy ! Push scheme (momentum/energy) - EC-PIC (Powis & Kaganovich 2024) if 'energy'
+END

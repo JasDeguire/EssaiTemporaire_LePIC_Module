@@ -1,0 +1,12 @@
+# Effect of gas flow. Fixed conditions otherwise unspecified in source data.
+# gas_flow_sccm: gas flow rate (sccm)
+# float_V: floating potential (V)
+# plasma_V: plasma potential (V)
+gas_flow_sccm,float_V,plasma_V
+6,15.58,24.89
+10,7.136,13.683
+14,3.142,8.89
+15,2.398,8.07
+18,1.265,6.654
+20,0.497,5.4928
+22,0.232,5.249

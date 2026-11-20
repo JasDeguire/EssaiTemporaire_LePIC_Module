@@ -7,6 +7,7 @@ module mod_output_2d
   public :: write_plane_xy_scalar, write_plane_xz_scalar, write_plane_yz_scalar
   public :: write_plane_xy_scalar_2d, write_plane_xz_scalar_2d, write_plane_yz_scalar_2d
   public :: write_density_planes, write_scalar_planes, write_vector_component_planes
+  public :: write_plane_xy_flux_2d, write_plane_xz_flux_2d, write_plane_yz_flux_2d
 
 contains
 
@@ -256,5 +257,67 @@ contains
     end do
     close(u)
   end subroutine write_plane_yz_scalar_2d
+
+  ! Legacy j<i>_*.mco: a flux-magnitude block followed by a "vector" block
+  ! of the in-plane flow angle (legacy write_data.f90: atan2 of the two
+  ! in-plane mean-velocity components) - two blocks, one file.
+  subroutine write_plane_xy_flux_2d(filename, mag, ang, n, every)
+    character(len=*), intent(in) :: filename
+    integer(int32),   intent(in) :: n(3), every
+    real(real64),     intent(in) :: mag(0:n(1)+2,0:n(2)+2), ang(0:n(1)+2,0:n(2)+2)
+    integer(int32) :: ix, iy
+    integer :: u
+
+    open(newunit=u, file=filename, status='replace', action='write')
+    write(u,*) npoints_1_to_np1(n(1), every), npoints_1_to_np1(n(2), every)
+    do iy = n(2)+1, 1, -every
+      write(u,'(*(es18.10,1x))') ( mag(ix,iy), ix=1,n(1)+1,every )
+    end do
+    write(u,'(a)') 'vector'
+    do iy = n(2)+1, 1, -every
+      write(u,'(*(es18.10,1x))') ( ang(ix,iy), ix=1,n(1)+1,every )
+    end do
+    close(u)
+  end subroutine write_plane_xy_flux_2d
+
+
+  subroutine write_plane_xz_flux_2d(filename, mag, ang, n, every)
+    character(len=*), intent(in) :: filename
+    integer(int32),   intent(in) :: n(3), every
+    real(real64),     intent(in) :: mag(0:n(1)+2,0:n(3)+2), ang(0:n(1)+2,0:n(3)+2)
+    integer(int32) :: ix, iz
+    integer :: u
+
+    open(newunit=u, file=filename, status='replace', action='write')
+    write(u,*) npoints_1_to_np1(n(1), every), npoints_1_to_np1(n(3), every)
+    do iz = n(3)+1, 1, -every
+      write(u,'(*(es18.10,1x))') ( mag(ix,iz), ix=1,n(1)+1,every )
+    end do
+    write(u,'(a)') 'vector'
+    do iz = n(3)+1, 1, -every
+      write(u,'(*(es18.10,1x))') ( ang(ix,iz), ix=1,n(1)+1,every )
+    end do
+    close(u)
+  end subroutine write_plane_xz_flux_2d
+
+
+  subroutine write_plane_yz_flux_2d(filename, mag, ang, n, every)
+    character(len=*), intent(in) :: filename
+    integer(int32),   intent(in) :: n(3), every
+    real(real64),     intent(in) :: mag(0:n(2)+2,0:n(3)+2), ang(0:n(2)+2,0:n(3)+2)
+    integer(int32) :: iy, iz
+    integer :: u
+
+    open(newunit=u, file=filename, status='replace', action='write')
+    write(u,*) npoints_1_to_np1(n(2), every), npoints_1_to_np1(n(3), every)
+    do iz = n(3)+1, 1, -every
+      write(u,'(*(es18.10,1x))') ( mag(iy,iz), iy=1,n(2)+1,every )
+    end do
+    write(u,'(a)') 'vector'
+    do iz = n(3)+1, 1, -every
+      write(u,'(*(es18.10,1x))') ( ang(iy,iz), iy=1,n(2)+1,every )
+    end do
+    close(u)
+  end subroutine write_plane_yz_flux_2d
 
 end module mod_output_2d

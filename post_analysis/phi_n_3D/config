@@ -1,9 +1,0 @@
-#!/bin/sh
-
-ifort -O3 -o convert.exe convert.f90
-rm -f *~
-
-
-
-
-

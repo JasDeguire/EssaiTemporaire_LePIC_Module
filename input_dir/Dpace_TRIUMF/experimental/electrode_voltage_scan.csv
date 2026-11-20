@@ -1,0 +1,13 @@
+# Effect of plasma electrode voltage, at 10 and 20 sccm gas flow.
+# electrode_voltage_V: plasma electrode voltage (V)
+# float_10sccm_V, plasma_10sccm_V: floating/plasma potential (V) at 10 sccm
+# float_20sccm_V, plasma_20sccm_V: floating/plasma potential (V) at 20 sccm
+electrode_voltage_V,float_10sccm_V,plasma_10sccm_V,float_20sccm_V,plasma_20sccm_V
+0,7.136,13.683,0.497,5.4928
+5,7.259,13.46,3.011,6.943
+10,9.786,15.242,7.94,10.874
+15,13.66,18.06,13.14,15.587
+20,18.23,22.08,18.263,20.379
+25,23.21,26.67,23.156,25.176
+30,28.155,31.55,27.96,29.75
+35,33.13,36.54,32.66,34.52

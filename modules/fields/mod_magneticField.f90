@@ -124,9 +124,9 @@ contains
       base = cfg%B_name(iB)
 
       if (cfg%B_file(iB) == 'y' .or. cfg%B_file(iB) == 'Y') then
-        call read_Bfield_map(self%Bi, self%n_B, trim(base)//'Bx.dat', 1, cfg%B_scale(iB), mpi_rank)
-        call read_Bfield_map(self%Bi, self%n_B, trim(base)//'By.dat', 2, cfg%B_scale(iB), mpi_rank)
-        call read_Bfield_map(self%Bi, self%n_B, trim(base)//'Bz.dat', 3, cfg%B_scale(iB), mpi_rank)
+        call read_Bfield_map(self%Bi, self%n_B, './input_dir/'//trim(base)//'Bx.dat', 1, cfg%B_scale(iB), mpi_rank)
+        call read_Bfield_map(self%Bi, self%n_B, './input_dir/'//trim(base)//'By.dat', 2, cfg%B_scale(iB), mpi_rank)
+        call read_Bfield_map(self%Bi, self%n_B, './input_dir/'//trim(base)//'Bz.dat', 3, cfg%B_scale(iB), mpi_rank)
 
       else if (cfg%B_file(iB) == 'n' .or. cfg%B_file(iB) == 'N') then
 
@@ -365,7 +365,7 @@ contains
     character(len=256) :: line, iom
     real(real64) :: val
     integer :: a, b, c
-
+    write(*,*) 'Reading B map from: ', trim(filename), ' into component ', B_dir
     open(newunit=unit, file=trim(filename), status='old', action='read', form='formatted', iostat=ios, iomsg=iom)
     if (ios /= 0) then
       if (mpi_rank == 0) write(*,*) 'ERROR: cannot open B map file: ', trim(filename), ' : ', trim(iom)

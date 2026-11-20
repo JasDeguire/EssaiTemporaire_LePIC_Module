@@ -1,0 +1,5 @@
+40. 32. 58. ! Box size: xmax, ymax, zmax
+0. 0.  0. 40. 32. 58. 1 ! (x<,y<,z<), (x>,y>,z>), V 
+0. -3.75 16.75 16. 28.25 41.25 2 ! Driver: yl<0 => circular cross-section, R=min(dy,dz)/2=12.25 cm about (ymax/2,zmax/2)
+40. 0. 0. 40. 32. 58. -4
+40. 0. 15.1 40. 32. 42.9 -3

@@ -63,7 +63,12 @@ contains
     self%k0 = self%rank * self%m
     self%k1 = self%k0 + self%m - 1
 
-    allocate(self%phi_dom(0:nx+2, 0:ny+2, 0:self%m+2))
+    ! phi_dom's z range starts at -1, not 0: pdesolver (legacy multigrid)
+    ! expects one extra ghost layer below the local domain
+    ! (u(0:n1+2,0:n2+2,-1:m+2)). Allocating it here lets
+    ! mod_PoissonSolver_legacy pass phi_dom straight through with no
+    ! temporary copy.
+    allocate(self%phi_dom(0:nx+2, 0:ny+2, -1:self%m+2))
     allocate(self%rhs_dom(0:nx+1, 0:ny+1, 0:self%m+1))
     allocate(self%bcnd_dom(0:nx+2, 0:ny+2, 0:self%m+2))
 
@@ -112,7 +117,7 @@ contains
     real(real64), intent(in) :: phi(0:,0:,0:)
     integer,      intent(in) :: bcnd(0:,0:,0:)
 
-    integer :: iz0, iz1
+    integer :: iz0, iz1, k
 
     iz0 = self%k0
     iz1 = self%k0 + self%m + 2
@@ -124,8 +129,13 @@ contains
       error stop
     end if
 
-    self%phi_dom(:,:,0:self%m+2)  = phi(:,:,iz0:iz1)
-    self%bcnd_dom(:,:,0:self%m+2) = int(bcnd(:,:,iz0:iz1), int32)
+    ! Plane-parallel copies (were single-threaded array assignments).
+    !$omp parallel do private(k) schedule(static)
+    do k = 0, self%m+2
+      self%phi_dom(:,:,k)  = phi(:,:,iz0+k)
+      self%bcnd_dom(:,:,k) = int(bcnd(:,:,iz0+k), int32)
+    end do
+    !$omp end parallel do
   end subroutine scatter_from_global
 
 
@@ -135,7 +145,7 @@ contains
     class(PoissonDecomp), intent(inout) :: self
     real(real64), intent(in) :: rhs(0:,0:,0:)
 
-    integer :: iz0, iz1
+    integer :: iz0, iz1, k
 
     iz0 = self%k0
     iz1 = self%k0 + self%m + 1
@@ -147,7 +157,11 @@ contains
       error stop
     end if
 
-    self%rhs_dom(:,:,0:self%m+1) = rhs(:,:,iz0:iz1)
+    !$omp parallel do private(k) schedule(static)
+    do k = 0, self%m+1
+      self%rhs_dom(:,:,k) = rhs(:,:,iz0+k)
+    end do
+    !$omp end parallel do
   end subroutine scatter_rhs_from_global
 
 

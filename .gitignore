@@ -1,8 +1,9 @@
-DATA.BAK/
 *.bak
-Output/
-DATA/
-DATA.BAK2/
-build/
 *.png
 slurm*
+*dump*
+.nfs*
+*.dat
+*.data
+*.txt
+build/

@@ -6,6 +6,20 @@ module mod_PoissonSolver_legacy
   implicit none
   private
   public :: solve_poisson_legacy
+  public :: print_poisson_breakdown, reset_poisson_breakdown
+
+  ! --- internal timing breakdown, to localize where time actually goes
+  ! inside solve_poisson_legacy (scatter to local decomposition, the
+  ! pdesolver multigrid call itself, gather back to global) - added
+  ! because eliminating the per-call temp-array allocation/copy did not
+  ! move the measured "poisson (ms)" total, so the cost must be one of
+  ! these three, not the part that was changed.
+  real(real64), save :: t_scatter = 0.0_real64
+  real(real64), save :: t_solve   = 0.0_real64
+  real(real64), save :: t_gather  = 0.0_real64
+  real(real64), save :: sum_k_it  = 0.0_real64
+  real(real64), save :: sum_res   = 0.0_real64
+  real(real64), save :: max_k_it  = 0.0_real64
 
   interface
     subroutine pdesolver(u,b,bcnd,h,n,ncycl,eps,omega,k,ktot,res,ng,rank,nproc)
@@ -38,66 +52,75 @@ contains
 
     integer :: k_it
     real(real64) :: ktot, res
-    integer(int32) :: m
     integer :: n_leg(3)
     real(real64) :: h_leg(3)
-
-    real(real64), allocatable :: u_mg(:,:,:)
-    real(real64), allocatable :: b_loc(:,:,:)
-    integer,      allocatable :: bcnd_loc(:,:,:)
+    real(real64) :: tA, tB
 
     flag_pbc = flag_pbc_in
     flag_nmn = flag_nmn_in
 
+    tA = MPI_Wtime()
     call pdec%scatter_from_global(phi_global, bcnd_global)
     call pdec%scatter_rhs_from_global(rhs_global)
+    tB = MPI_Wtime()
+    t_scatter = t_scatter + (tB - tA)
 
-    m     = pdec%m
     n_leg = int(n_in, kind=4)
     h_leg = h
 
-    allocate(u_mg(0:n_leg(1)+2, 0:n_leg(2)+2, -1:m+2))
-    allocate(b_loc(0:n_leg(1)+1, 0:n_leg(2)+1,  0:m+1))
-    allocate(bcnd_loc(0:n_leg(1)+2, 0:n_leg(2)+2, 0:m+2))
-
-    u_mg = 0.0_real64
-    b_loc = 0.0_real64
-    bcnd_loc = 0
-
-    u_mg(:,:,0:m+2)     = pdec%phi_dom(:,:,0:m+2)
-    bcnd_loc(:,:,0:m+2) = pdec%bcnd_dom(:,:,0:m+2)
-    b_loc(:,:,:)        = pdec%rhs_dom(:,:,:)
-
-    ! if (pdec%rank == 0) then
-    !   write(*,*) 'DEBUG LEGACY-DRIVER flags: flag_pbc, flag_nmn = ', flag_pbc, flag_nmn
-    !   write(*,*) 'DEBUG LEGACY-DRIVER phi before pdesolver'
-    !   write(*,'(a,es16.8)') 'sum      = ', sum(u_mg)
-    !   write(*,'(a,es16.8)') 'sum(abs) = ', sum(abs(u_mg))
-    !   write(*,'(a,es16.8)') 'max      = ', maxval(u_mg)
-    !   write(*,'(a,es16.8)') 'min      = ', minval(u_mg)
-    ! end if
+    ! Legacy zeroed the whole u_mg array (including the extra z=-1 ghost
+    ! layer) before every solve; with phi_dom now persistent across calls
+    ! (see mod_PoissonDecomposition%init), only that one 2D ghost layer
+    ! needs resetting here - everything else (phi_dom(:,:,0:m+2),
+    ! rhs_dom, bcnd_dom) was just freshly written by the scatter calls
+    ! above, so no separate copy into a temporary is needed at all.
+    pdec%phi_dom(:,:,-1) = 0.0_real64
 
     k_it = 0
     ktot = 0.0_real64
     res  = 0.0_real64
 
+    tA = MPI_Wtime()
+    call pdesolver(pdec%phi_dom, pdec%rhs_dom, pdec%bcnd_dom, h_leg, n_leg, &
+                   ncycl, eps, omega, k_it, ktot, res, ng, pdec%rank, pdec%nproc)
+    tB = MPI_Wtime()
+    t_solve = t_solve + (tB - tA)
+    sum_k_it = sum_k_it + real(k_it, real64)
+    sum_res  = sum_res + res
+    max_k_it = max(max_k_it, real(k_it, real64))
 
-
-    call pdesolver(u_mg, b_loc, bcnd_loc, h_leg, n_leg, ncycl, eps, omega, &
-                   k_it, ktot, res, ng, pdec%rank, pdec%nproc)
-
-    ! if (pdec%rank == 0) then
-    !   write(*,*) 'DEBUG LEGACY-DRIVER phi after pdesolver'
-    !   write(*,'(a,es16.8)') 'sum      = ', sum(u_mg)
-    !   write(*,'(a,es16.8)') 'sum(abs) = ', sum(abs(u_mg))
-    !   write(*,'(a,es16.8)') 'max      = ', maxval(u_mg)
-    !   write(*,'(a,es16.8)') 'min      = ', minval(u_mg)
-    ! end if
-
-    pdec%phi_dom(:,:,0:m+2) = u_mg(:,:,0:m+2)
+    tA = MPI_Wtime()
     call pdec%gather_phi_to_global(phi_global)
-
-    deallocate(u_mg, b_loc, bcnd_loc)
+    tB = MPI_Wtime()
+    t_gather = t_gather + (tB - tA)
   end subroutine solve_poisson_legacy
+
+
+  subroutine print_poisson_breakdown(t_count)
+    integer(int32), intent(in) :: t_count
+    real(real64) :: denom
+    if (t_count <= 0_int32) return
+    denom = real(t_count, real64)
+    write(*,'(a)') " ----- poisson timing breakdown -----"
+    write(*,'(a,f8.2,a,f8.2,a,f8.2)') &
+      "  scatter(ms)=", 1000.0_real64*t_scatter/denom, &
+      "  solve(ms)=",   1000.0_real64*t_solve/denom, &
+      "  gather(ms)=",  1000.0_real64*t_gather/denom
+    write(*,'(a,f8.2,a,f8.2,a,es10.2)') &
+      "  k_it_avg=", sum_k_it/denom, &
+      "  k_it_max=", max_k_it, &
+      "  res_avg=", sum_res/denom
+    write(*,'(a)') " -------------------------------------"
+  end subroutine print_poisson_breakdown
+
+
+  subroutine reset_poisson_breakdown()
+    t_scatter = 0.0_real64
+    t_solve   = 0.0_real64
+    t_gather  = 0.0_real64
+    sum_k_it  = 0.0_real64
+    sum_res   = 0.0_real64
+    max_k_it  = 0.0_real64
+  end subroutine reset_poisson_breakdown
 
 end module mod_PoissonSolver_legacy

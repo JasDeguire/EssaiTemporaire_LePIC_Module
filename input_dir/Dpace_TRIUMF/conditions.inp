@@ -5,12 +5,10 @@ hydrogen2.dat ! name of file storing reactions
 256 160 160 ! n: nx=2**n, ny=2**n. Number of grid points [2**7,2**3]
 0. 1.5 0. 10. 0. 10. ! Particle heating region x<, x>, y<, y>, z<, z> [cm]
 16. ! Particle loading region [cm]
-3 ! # of magnetic field files (<0 positive ions not magnetized)
+1 ! # of magnetic field files (<0 positive ions not magnetized)
 256 160 160 ! Grid for the magnetic field map
-s gauss 1. 100. By 2.d0 10. 0. 0. ! ext. file (y/n/s), name, scaling, B(G), direction, L/x0/y0/z0(cm)
-s thr 1. 100. By 1. 0.53 0. 0. ! ext. file (y/n/s), name, scaling, B(G), direction, L/x0/y0/z0(cm)
 y B_field_ 1. 100. By 1. 0.53 0. 0. ! ext. file (y/n/s), name, scaling, B(G), direction, L/x0/y0/z0(cm)
-2.5d3 1.d8 ! Pabs(W) (<0 to turn off), Heating frequency (<0 == off)
+800. 1.d8 ! Pabs(W) (<0 to turn off), Heating frequency (<0 == off) -- 800W matches the one measured power point (experimental/, 10 sccm/0.56A case), unconfirmed at other flows
 -1.d0 2 ! Inject current I(A) (<0 == off), options [1=fixed, 2= equal to ion losses, 3= e-beam (+Z), 4= emmissive cath. (+Z), <0 cosine]
 1.d-3 ! t_max(s)
 0.3  ! time coeff. k ; dt= k*dx/vt
@@ -25,6 +23,8 @@ no 1 0. 10. 0. 10. 1 0. 16. ! Save pdf (y/n), ptype, yl, yr, zl, zr (cm), # of r
 no 48 2 1 ! Restart (yes/no/external/gauss),  # of OMP threads, # of MPI, coefficient for particle duplication/removal
 no 1. 1. 1 1 2 ! Holes (y/n), Lhy*Lhz(cm), ny*nz holes, (PE) grid index
 0. 10. 3 1.d-6 ! jH-(mA/cm2) from H on PE surface, TH-(eV), characteristics of neg. ions on grid # [index], dielectric capacitance Ca/S (Fd/m2)
--0.1 2 ! Secondary emission coeff (<0 == off), grid index
+-0.18 2 no 0. 0.2 0.6 0.8 0. ! Secondary emission coeff (<0 == off), grid index
+yes  ! Coulomb collisions (no/yes)
+energy ! Push scheme (momentum/energy) - EC-PIC (Powis & Kaganovich 2024) if 'energy'
 END
 
